@@ -5,6 +5,7 @@ import {
   levelProgress,
   rankProgress,
   finishSession,
+  sessionEnd,
   logProgress,
   logSet,
   missQuest,
@@ -391,7 +392,7 @@ const clock = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 };
-const sessionMs = (session, now = Date.now()) => (session.pausedAt ?? now) - session.startedAt - session.pausedMs;
+const sessionMs = (session, now = Date.now()) => Math.min(session.pausedAt ?? now, sessionEnd(session, now)) - session.startedAt - session.pausedMs;
 const restLeftMs = (quest, now = Date.now()) => {
   const last = quest.proofs.filter((p) => p.source === "sets").reduce((max, p) => Math.max(max, Date.parse(p.endedAt)), 0);
   return Math.max(0, last + REST_MS - now);

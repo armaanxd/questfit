@@ -267,6 +267,24 @@ finishSession(ob, at(7, 25));
 applyHealthReading(ob, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [hcRun] }, at(12));
 assert.equal(ob.quests.find((q) => q.kind === "class").progress, 0);
 
+// final fix: overlapping health workout leaves a running timer's minutes alone
+const tm = fresh("ranger");
+startSession(tm, mainOf(tm).id, at(7));
+applyHealthReading(tm, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [hcRun] }, at(7, 30));
+assert.equal(tm.quests.find((q) => q.kind === "class").progress, 0);
+finishSession(tm, at(7, 35));
+assert.equal(mainOf(tm).proofs[0].source, "timer");
+assert.equal(mainOf(tm).status, "completed");
+
+// final fix: finishing on an already-complete quest says so
+const dn = fresh("ranger");
+const dnQ = mainOf(dn);
+startSession(dn, dnQ.id, at(9));
+applyHealthReading(dn, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [{ ...hcRun, minutes: 60, endedAt: iso(at(8)) }] }, at(9, 5));
+assert.equal(dnQ.status, "completed");
+finishSession(dn, at(9, 30));
+assert.equal(dn.notice, "Quest already complete; minutes not credited.");
+
 // Task 3b: timer credit is capped
 const ovn = fresh("warrior");
 const ovMain = mainOf(ovn);

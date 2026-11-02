@@ -346,12 +346,14 @@ export function resumeSession(state, now = Date.now()) {
   return { changed: true };
 }
 
+// Credit ends at local midnight of the start day or after MAX_SESSION_MS.
+export const sessionEnd = (session, now) => Math.min(now, new Date(session.startedAt).setHours(24, 0, 0, 0), session.startedAt + MAX_SESSION_MS);
+
 export function finishSession(state, now = Date.now()) {
   const session = state.activeSession;
   if (!session) return { changed: false };
   // Credit stops at local midnight of the start day or after MAX_SESSION_MS, so a forgotten timer can't farm time.
-  const midnight = new Date(session.startedAt).setHours(24, 0, 0, 0);
-  const end = Math.min(now, midnight, session.startedAt + MAX_SESSION_MS);
+  const end = sessionEnd(session, now);
   const pausedMs = session.pausedMs + (session.pausedAt ? Math.max(0, end - session.pausedAt) : 0);
   const amount = Math.floor((end - session.startedAt - pausedMs) / 60000);
   state.activeSession = null;
@@ -359,7 +361,9 @@ export function finishSession(state, now = Date.now()) {
     state.notice = "Under a minute, nothing logged.";
     return { changed: false };
   }
-  return addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(end), meta: { pausedMs } }, now);
+  const result = addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(end), meta: { pausedMs } }, now);
+  if (!result.changed && !result.reason) state.notice = "Quest already complete; minutes not credited.";
+  return result;
 }
 
 export function missQuest(state, questId) {
@@ -427,7 +431,10 @@ export function applyHealthReading(state, reading, now = Date.now()) {
     const current = quest.proofs.filter((p) => p.source === "health-steps").reduce((sum, p) => sum + p.amount, 0);
     if (reading.steps.total > current) add(quest, { id: `health-steps-${day}`, source: "health-steps", amount: reading.steps.total, startedAt: reading.dayStart, endedAt: iso(now), meta: {} });
   }
+  const sess = state.activeSession;
   for (const workout of reading.workouts) {
+    // Leave workouts overlapping a running timer for a later sync, so the timer proof wins.
+    if (sess && Date.parse(workout.startedAt) < now && Date.parse(workout.endedAt) > sess.startedAt) continue;
     if (state.quests.some((q) => q.proofs.some((p) => p.id === workout.id))) continue;
     const { category, known } = workoutCategory(workout.type);
     const candidates = active()
