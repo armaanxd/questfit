@@ -35,3 +35,14 @@ export function rewardFor(quest) {
   const part = (total) => Math.floor((total * (v + s / 2)) / quest.target);
   return { xp: part(quest.xp), coins: part(quest.coins) };
 }
+
+const CATEGORIES = {
+  cardio: ["running", "runningTreadmill", "walking", "cycling", "bikingStationary", "hiking", "elliptical", "rowing", "rowingMachine", "swimming", "swimmingPool", "swimmingOpenWater"],
+  strength: ["strengthTraining", "traditionalStrengthTraining", "functionalStrengthTraining", "weightlifting", "calisthenics"],
+  mobility: ["yoga", "pilates", "stretching", "flexibility"],
+};
+
+export function workoutCategory(type) {
+  const category = Object.keys(CATEGORIES).find((name) => CATEGORIES[name].includes(type));
+  return { category: category || "cardio", known: !!category };
+}

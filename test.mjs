@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { addProof, createState, finishSession, fitnessLevelInfo, levelForXp, logProgress, logSet, makeQuests, missQuest, pauseSession, rankProgress, resetForNewDay, resumeSession, startSession, todayKey, useDayPass, workoutRotationDay } from "./game.js";
-import { acceptProof, progressOf, rewardFor } from "./verify.js";
+import { addProof, applyHealthReading, createState, finishSession, fitnessLevelInfo, levelForXp, logProgress, logSet, makeQuests, missQuest, pauseSession, rankProgress, resetForNewDay, resumeSession, startSession, todayKey, useDayPass, workoutRotationDay } from "./game.js";
+import { workoutCategory, acceptProof, progressOf, rewardFor } from "./verify.js";
 
 const midnightBoundary = new Date("2026-10-10T00:30:00.000Z");
 assert.equal(todayKey(midnightBoundary, "Asia/Kolkata"), "2026-10-10");
@@ -232,5 +232,39 @@ assert.equal(old.quests[1].proofs[0].amount, 2000);
 assert.equal(old.quests[1].proofs[0].verified, false);
 assert.equal(old.quests[1].progress, 2000);
 assert.deepEqual(old.quests[0].verify, ["health-workout", "timer"]);
+
+assert.deepEqual(workoutCategory("running"), { category: "cardio", known: true });
+assert.deepEqual(workoutCategory("weightlifting"), { category: "strength", known: true });
+assert.deepEqual(workoutCategory("yoga"), { category: "mobility", known: true });
+assert.deepEqual(workoutCategory("golf"), { category: "cardio", known: false });
+
+const hcRun = { id: "hc-run", type: "running", startedAt: iso(at(7)), endedAt: iso(at(7, 25)), minutes: 25, app: "com.sec.android.app.shealth", heartRateSamples: 40 };
+const reading = { dayStart: iso(at(0)), steps: { total: 8500 }, workouts: [hcRun] };
+const rb = fresh("ranger");
+assert.equal(applyHealthReading(rb, reading, at(12)).changed, true);
+assert.equal(rb.quests.find((q) => q.main).status, "completed");
+assert.equal(rb.quests.find((q) => q.unit === "steps").status, "completed");
+assert.equal(rb.quests.find((q) => q.kind === "class").progress, 0);
+assert.equal(applyHealthReading(rb, reading, at(12, 5)).changed, false);
+assert.equal(rb.health.lastSyncAt, at(12, 5));
+
+const lb = fresh("mage");
+applyHealthReading(lb, { dayStart: iso(at(0)), steps: { total: 3000 }, workouts: [] }, at(12));
+applyHealthReading(lb, { dayStart: iso(at(0)), steps: { total: 1000 }, workouts: [] }, at(13));
+assert.equal(lb.quests.find((q) => q.unit === "steps").progress, 3000);
+
+const nb = fresh("ranger");
+applyHealthReading(nb, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [{ ...hcRun, heartRateSamples: 0, minutes: 15, endedAt: iso(at(7, 15)) }] }, at(12));
+assert.equal(nb.quests.find((q) => q.main).progress, 0);
+const farSight = nb.quests.find((q) => q.kind === "class");
+assert.equal(farSight.status, "completed");
+assert.equal(farSight.proofs[0].verified, false);
+assert.equal(nb.player.xp, 40);
+
+const ob = fresh("ranger");
+startSession(ob, ob.quests.find((q) => q.main).id, at(7));
+finishSession(ob, at(7, 25));
+applyHealthReading(ob, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [hcRun] }, at(12));
+assert.equal(ob.quests.find((q) => q.kind === "class").progress, 0);
 
 console.log("QuestFit game logic checks passed.");

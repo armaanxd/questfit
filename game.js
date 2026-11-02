@@ -1,5 +1,5 @@
 import { currentTimeZone, todayKey } from "./time.js";
-import { acceptProof, progressOf, rewardFor } from "./verify.js";
+import { workoutCategory, acceptProof, progressOf, rewardFor } from "./verify.js";
 export { currentTimeZone, todayKey } from "./time.js";
 
 export const QUEST_BLUEPRINTS = {
@@ -404,4 +404,36 @@ export function useDayPass(state, kind) {
 
 export function formatValue(value) {
   return new Intl.NumberFormat().format(value);
+}
+
+const KIND_ORDER = { main: 0, side: 1, class: 2 };
+
+export function applyHealthReading(state, reading, now = Date.now()) {
+  state.health ??= { connected: false, lastSyncAt: null };
+  const notice = state.notice;
+  const day = state.day;
+  const active = () => state.quests.filter((q) => q.status === "active");
+  let added = 0;
+  const add = (quest, proof) => {
+    const result = addProof(state, quest.id, proof, now);
+    if (result.changed) added += 1;
+    return result.changed;
+  };
+  for (const quest of active().filter((q) => q.verify.includes("health-steps"))) {
+    const current = quest.proofs.filter((p) => p.source === "health-steps").reduce((sum, p) => sum + p.amount, 0);
+    if (reading.steps.total > current) add(quest, { id: `health-steps-${day}`, source: "health-steps", amount: reading.steps.total, startedAt: reading.dayStart, endedAt: iso(now), meta: {} });
+  }
+  for (const workout of reading.workouts) {
+    if (state.quests.some((q) => q.proofs.some((p) => p.id === workout.id))) continue;
+    const { category, known } = workoutCategory(workout.type);
+    const candidates = active()
+      .filter((q) => q.unit === "min" && q.verify.includes("health-workout") && q.category === category)
+      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+    const proof = { id: workout.id, source: "health-workout", amount: workout.minutes, startedAt: workout.startedAt, endedAt: workout.endedAt, meta: { app: workout.app, heartRateSamples: workout.heartRateSamples, knownType: known } };
+    candidates.some((quest) => add(quest, proof));
+  }
+  state.health.lastSyncAt = now;
+  if (!added) state.notice = notice;
+  else state.notice = `Health Connect added ${added} update${added === 1 ? "" : "s"}.`;
+  return { changed: added > 0 };
 }
