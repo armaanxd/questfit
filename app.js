@@ -397,13 +397,15 @@ const restLeftMs = (quest, now = Date.now()) => {
   return Math.max(0, last + REST_MS - now);
 };
 
+function renderSessionControls(session) {
+  return `<span class="session-timer" data-timer>${clock(sessionMs(session))}</span><button class="small-button" data-action="${session.pausedAt ? "resume-session" : "pause-session"}">${session.pausedAt ? "Resume" : "Pause"}</button><button class="small-button" data-action="finish-session">Finish</button>`;
+}
+
 function renderQuestActions(quest) {
   const session = state.activeSession;
   if (quest.unit === "steps") return state.health?.connected ? `<button class="small-button" data-action="sync-health">Sync steps</button>` : "";
   if (quest.unit === "min") {
-    if (session?.questId === quest.id) {
-      return `<span class="session-timer" data-timer>${clock(sessionMs(session))}</span><button class="small-button" data-action="${session.pausedAt ? "resume-session" : "pause-session"}">${session.pausedAt ? "Resume" : "Pause"}</button><button class="small-button" data-action="finish-session">Finish</button>`;
-    }
+    if (session?.questId === quest.id) return renderSessionControls(session);
     return session ? "" : `<button class="small-button" data-action="start-session" data-quest-id="${quest.id}">Start session</button>`;
   }
   if (quest.unit === "sets") {
@@ -425,7 +427,7 @@ function renderQuest(quest) {
         <p>${quest.description}</p>
         <div class="progress-meta"><span>${finished ? prettyStatus(quest.status) : `${formatValue(quest.progress)} / ${formatValue(quest.target)} ${quest.unit}`}</span><strong>${percent}%</strong></div>
         <div class="progress-track"><span style="width: ${percent}%"></span></div>
-        ${finished ? `<div class="quest-result">${quest.status === "completed" ? "✓ Quest complete" : `◌ ${prettyStatus(quest.status)}`}</div>` : `
+        ${finished ? `<div class="quest-result">${quest.status === "completed" ? "✓ Quest complete" : `◌ ${prettyStatus(quest.status)}`}</div>${state.activeSession?.questId === quest.id ? `<div class="quest-actions">${renderSessionControls(state.activeSession)}</div>` : ""}` : `
           <div class="proof-badges">${proofBadges(quest)}</div>
           <div class="quest-actions">${renderQuestActions(quest)}</div>
           ${quest.main ? "" : `<details class="manual-log"><summary class="text-button">Log manually</summary>
@@ -628,11 +630,17 @@ function startTicker() {
 
 async function syncHealth() {
   if (!state?.health?.connected) return;
+  const previousDay = state.day;
+  state = resetForNewDay(state); // roll the day first so the read and the proof land on today's board
+  if (state.day !== previousDay) saveState();
   try {
     const now = new Date();
     const dayStart = new Date(`${state.day}T00:00:00`); // local midnight of the board's day
-    if (applyHealthReading(state, await health.readToday(dayStart, now), now.getTime()).changed) companionReaction = "cheer";
+    const reading = await health.readToday(dayStart, now);
+    if (!state) return; // campaign was reset mid-sync
+    if (applyHealthReading(state, reading, now.getTime()).changed) companionReaction = "cheer";
   } catch (error) {
+    if (!state) return;
     state.notice = `Health sync failed: ${error?.message || "unknown error"}`;
   }
   saveState();
