@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createState, fitnessLevelInfo, levelForXp, logProgress, missQuest, rankProgress, resetForNewDay, todayKey, useDayPass, workoutRotationDay } from "./game.js";
+import { addProof, createState, finishSession, fitnessLevelInfo, levelForXp, logProgress, logSet, makeQuests, missQuest, pauseSession, rankProgress, resetForNewDay, resumeSession, startSession, todayKey, useDayPass, workoutRotationDay } from "./game.js";
 import { acceptProof, progressOf, rewardFor } from "./verify.js";
 
 const midnightBoundary = new Date("2026-10-10T00:30:00.000Z");
@@ -12,8 +12,17 @@ assert.equal(fitnessLevelInfo("advanced").rank, "A");
 assert.equal(fitnessLevelInfo("master").rank, "S");
 assert.equal(fitnessLevelInfo("regular").label, "Capable");
 
+const mainOf = (s) => s.quests.find((quest) => quest.main);
+// Completes the main quest with a timer on the quest's own day (manual no longer counts on main).
+const finishMain = (s) => {
+  const quest = mainOf(s);
+  const start = new Date(`${quest.day}T10:00:00`).getTime();
+  startSession(s, quest.id, start);
+  return finishSession(s, start + quest.target * 60000);
+};
+
 const rolloverState = createState({ className: "mage" });
-const rolloverQuestId = rolloverState.quests[0].id;
+const rolloverQuestId = rolloverState.quests[1].id;
 logProgress(rolloverState, rolloverQuestId, 5);
 resetForNewDay(rolloverState, "2099-01-02");
 assert.equal(rolloverState.day, "2099-01-02");
@@ -31,13 +40,13 @@ assert.equal(allRounder.quests.find((quest) => quest.kind === "class").title, "M
 
 const statState = createState({ className: "warrior" });
 const startingStrength = statState.player.stats.strength;
-logProgress(statState, statState.quests.find((quest) => quest.main).id, 30);
+finishMain(statState);
 assert.ok(statState.player.stats.strength > startingStrength);
 
 const state = createState({ name: "Test", penaltyMode: "balanced" });
 const main = state.quests.find((quest) => quest.main);
 
-logProgress(state, main.id, main.target);
+finishMain(state);
 assert.equal(main.status, "completed");
 assert.equal(state.player.streak, 1);
 assert.equal(state.player.xp, 100);
@@ -57,9 +66,6 @@ const recoveryMain = recoveryState.quests.find((quest) => quest.main);
 useDayPass(recoveryState, "rest");
 assert.equal(recoveryMain.status, "skipped_rest");
 assert.equal(recoveryState.player.streak, 0);
-
-const mainOf = (s) => s.quests.find((quest) => quest.main);
-const finishMain = (s) => logProgress(s, mainOf(s).id, mainOf(s).target);
 
 const streakState = createState({ penaltyMode: "balanced" });
 streakState.day = "2099-03-01";
@@ -168,5 +174,63 @@ assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }] })), { 
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: false }] })), { xp: 50, coins: 10 });
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 15, verified: true }, { amount: 15, verified: false }] })), { xp: 75, coins: 15 });
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }, { amount: 10, verified: false }] })), { xp: 100, coins: 20 });
+
+// proof-based quests
+const fresh = (className) => { const s = createState({ className }); s.day = "2026-10-20"; s.quests = makeQuests("2026-10-20", className); return s; };
+const wb = fresh("warrior");
+const wMain = wb.quests.find((q) => q.main);
+assert.deepEqual(wMain.verify, ["health-workout", "timer"]);
+assert.deepEqual(wb.quests.find((q) => q.unit === "steps").verify, ["health-steps", "manual"]);
+assert.equal(wMain.day, "2026-10-20");
+assert.deepEqual(wMain.proofs, []);
+assert.equal(logProgress(wb, wMain.id, 30, at(12)).changed, false);
+assert.equal(wMain.progress, 0);
+const march = wb.quests.find((q) => q.unit === "steps");
+logProgress(wb, march.id, 6000, at(12));
+assert.equal(march.status, "completed");
+assert.equal(wb.player.xp, 25);
+startSession(wb, wMain.id, at(10));
+assert.equal(startSession(wb, march.id, at(10, 1)).changed, false);
+pauseSession(wb, at(10, 10));
+resumeSession(wb, at(10, 20));
+finishSession(wb, at(10, 40));
+assert.equal(wMain.status, "completed");
+assert.equal(wMain.proofs[0].amount, 30);
+assert.equal(wb.player.xp, 125);
+assert.equal(wb.player.streak, 1);
+assert.equal(wb.activeSession, null);
+
+const short = fresh("mage");
+startSession(short, short.quests[0].id, at(9));
+assert.equal(finishSession(short, at(9, 0, 50)).changed, false);
+assert.equal(short.activeSession, null);
+
+const sb = fresh("warrior");
+const sigil = sb.quests.find((q) => q.unit === "sets");
+logSet(sb, sigil.id, at(10));
+assert.equal(logSet(sb, sigil.id, at(10, 0, 10)).changed, false);
+logSet(sb, sigil.id, at(10, 0, 40));
+logSet(sb, sigil.id, at(10, 1, 20));
+assert.equal(sigil.status, "completed");
+
+const night = fresh("warrior");
+const nightMain = night.quests.find((q) => q.main);
+startSession(night, nightMain.id, at(23, 25));
+resetForNewDay(night, "2026-10-21", new Date(2026, 9, 21, 0, 0).getTime());
+assert.equal(night.activeSession, null);
+assert.equal(night.player.xp, 100);
+assert.equal(night.player.missed, 0);
+assert.equal(night.history[0].title, nightMain.title);
+assert.equal(night.quests[0].day, "2026-10-21");
+
+const old = fresh("warrior");
+for (const q of old.quests) { delete q.proofs; delete q.verify; delete q.day; }
+old.quests[1].progress = 2000;
+resetForNewDay(old, "2026-10-20");
+assert.equal(old.quests[1].proofs[0].source, "manual");
+assert.equal(old.quests[1].proofs[0].amount, 2000);
+assert.equal(old.quests[1].proofs[0].verified, false);
+assert.equal(old.quests[1].progress, 2000);
+assert.deepEqual(old.quests[0].verify, ["health-workout", "timer"]);
 
 console.log("QuestFit game logic checks passed.");

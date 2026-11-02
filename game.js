@@ -1,4 +1,5 @@
 import { currentTimeZone, todayKey } from "./time.js";
+import { acceptProof, progressOf, rewardFor } from "./verify.js";
 export { currentTimeZone, todayKey } from "./time.js";
 
 export const QUEST_BLUEPRINTS = {
@@ -107,10 +108,18 @@ export function makeQuests(day = todayKey(), className = "warrior") {
     ...quest,
     kind: quest.kind || (quest.main ? "main" : "side"),
     id: `${day}-${quest.key}`,
+    day,
+    verify: verifyListFor(quest),
+    proofs: [],
     progress: 0,
     statProgressAwarded: 0,
     status: "active",
   }));
+}
+
+export function verifyListFor(quest) {
+  const list = quest.unit === "steps" ? ["health-steps", "manual"] : quest.unit === "sets" ? ["sets", "manual"] : ["health-workout", "timer", "manual"];
+  return quest.main ? list.filter((source) => source !== "manual") : list;
 }
 
 export function modeDetails(mode) {
@@ -153,7 +162,7 @@ export function rankProgress(xp, className = "warrior", penaltyMode = "balanced"
   };
 }
 
-export function resetForNewDay(state, day) {
+export function resetForNewDay(state, day, now = Date.now()) {
   state.profile ??= {};
   state.profile.timeZone = currentTimeZone();
   day = day || todayKey(new Date(), state.profile.timeZone);
@@ -171,7 +180,16 @@ export function resetForNewDay(state, day) {
     state.questVersion = 2;
     state.notice = "Your class has shaped a new quest board.";
   }
+  state.activeSession ??= null;
+  for (const quest of state.quests) {
+    quest.day ??= state.day;
+    quest.verify ??= verifyListFor(quest);
+    const at = new Date(`${quest.day}T12:00:00`).toISOString();
+    quest.proofs ??= quest.progress > 0 ? [{ id: `manual-migrated-${quest.id}`, source: "manual", amount: quest.progress, startedAt: at, endedAt: at, verified: false, meta: {} }] : [];
+  }
   if (state.day === day) return state;
+  // Credit a running session to its start day before the miss check below.
+  if (state.activeSession) finishSession(state, now);
   let missedDays = 0;
   // Only roll forward; a clock or time zone moving back just rebuilds the board.
   if (day > state.day) {
@@ -219,13 +237,14 @@ function addHistory(state, entry) {
 }
 
 function award(state, quest) {
+  const reward = rewardFor(quest);
   const multiplier = 1 - state.player.xpDebuffPct / 100;
-  const xpEarned = Math.max(0, Math.floor(quest.xp * multiplier));
+  const xpEarned = Math.max(0, Math.floor(reward.xp * multiplier));
   state.player.xp += xpEarned;
-  state.player.coins += quest.coins;
+  state.player.coins += reward.coins;
   state.player.completed += 1;
-  addHistory(state, { type: "complete", title: quest.title, xp: xpEarned, coins: quest.coins });
-  return { xpEarned, coins: quest.coins };
+  addHistory(state, { type: "complete", title: quest.title, xp: xpEarned, coins: reward.coins });
+  return { xpEarned, coins: reward.coins };
 }
 
 function updateQuestStats(state, quest) {
@@ -249,11 +268,7 @@ function updateQuestStats(state, quest) {
   }
 }
 
-export function completeQuest(state, questId) {
-  const quest = state.quests.find((item) => item.id === questId);
-  if (!quest || quest.status !== "active") return { changed: false };
-  quest.progress = quest.target;
-  updateQuestStats(state, quest);
+function completeQuest(state, quest) {
   quest.status = "completed";
   const reward = award(state, quest);
   if (quest.main) {
@@ -274,15 +289,73 @@ export function completeQuest(state, questId) {
   return { changed: true, quest, reward };
 }
 
-export function logProgress(state, questId, amount) {
+export function addProof(state, questId, proof, now = Date.now()) {
   const quest = state.quests.find((item) => item.id === questId);
-  const value = Number(amount);
-  if (!quest || quest.status !== "active" || !Number.isFinite(value) || value <= 0) return { changed: false };
-  quest.progress = Math.min(quest.target, quest.progress + value);
+  if (!quest || quest.status !== "active") return { changed: false };
+  const result = acceptProof(quest, proof, state.quests.flatMap((item) => item.proofs), now, state.profile.timeZone);
+  if (!result.ok) {
+    state.notice = result.reason;
+    return { changed: false, reason: result.reason };
+  }
+  if (result.replaces) quest.proofs = quest.proofs.filter((item) => item.id !== proof.id);
+  quest.proofs.push(result.proof);
+  quest.progress = progressOf(quest);
   updateQuestStats(state, quest);
-  if (quest.progress >= quest.target) return completeQuest(state, questId);
+  if (quest.progress >= quest.target) return completeQuest(state, quest);
   state.notice = `${quest.title}: ${formatValue(quest.progress)} / ${formatValue(quest.target)} ${quest.unit}.`;
   return { changed: true, quest };
+}
+
+const iso = (ms) => new Date(ms).toISOString();
+
+export function logProgress(state, questId, amount, now = Date.now()) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) return { changed: false };
+  return addProof(state, questId, { id: `manual-${now}`, source: "manual", amount: value, startedAt: iso(now), endedAt: iso(now), meta: {} }, now);
+}
+
+export function logSet(state, questId, now = Date.now()) {
+  return addProof(state, questId, { id: `set-${now}`, source: "sets", amount: 1, startedAt: iso(now), endedAt: iso(now), meta: {} }, now);
+}
+
+export function startSession(state, questId, now = Date.now()) {
+  const quest = state.quests.find((item) => item.id === questId);
+  if (!quest || quest.status !== "active" || !quest.verify.includes("timer")) return { changed: false };
+  if (state.activeSession) {
+    state.notice = "Finish your current session first.";
+    return { changed: false };
+  }
+  state.activeSession = { questId, startedAt: now, pausedMs: 0, pausedAt: null };
+  state.notice = `${quest.title}: timer started.`;
+  return { changed: true, quest };
+}
+
+export function pauseSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session || session.pausedAt) return { changed: false };
+  session.pausedAt = now;
+  return { changed: true };
+}
+
+export function resumeSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session || !session.pausedAt) return { changed: false };
+  session.pausedMs += now - session.pausedAt;
+  session.pausedAt = null;
+  return { changed: true };
+}
+
+export function finishSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session) return { changed: false };
+  const pausedMs = session.pausedMs + (session.pausedAt ? now - session.pausedAt : 0);
+  const amount = Math.floor((now - session.startedAt - pausedMs) / 60000);
+  state.activeSession = null;
+  if (amount < 1) {
+    state.notice = "Under a minute, nothing logged.";
+    return { changed: false };
+  }
+  return addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(now), meta: { pausedMs } }, now);
 }
 
 export function missQuest(state, questId) {

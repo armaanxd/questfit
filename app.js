@@ -1,6 +1,5 @@
 import {
   createState,
-  completeQuest,
   fitnessLevelInfo,
   formatValue,
   levelProgress,
@@ -12,7 +11,7 @@ import {
   STAT_KEYS,
   useDayPass,
   workoutRotationDay,
-} from "./game.js?v=7";
+} from "./game.js?v=8";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -386,7 +385,6 @@ function renderQuest(quest) {
           <form class="log-form" data-quest-id="${quest.id}">
             <input aria-label="Amount to log for ${escapeHtml(quest.title)}" name="amount" type="number" min="1" step="1" value="${quest.logStep}" />
             <button class="small-button" type="submit">Log ${quest.unit}</button>
-            <button class="text-button" type="button" data-action="complete" data-quest-id="${quest.id}">Complete</button>
           </form>
         `}
       </div>
@@ -492,7 +490,6 @@ function bindDashboardEvents() {
   }));
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.action;
-    if (action === "complete" && completeQuest(state, button.dataset.questId).changed) companionReaction = "cheer";
     if (action === "miss-main" && missQuest(state, state.quests.find((quest) => quest.main)?.id).changed) companionReaction = "sad";
     if (action === "rest") useDayPass(state, "rest");
     if (action === "sick") useDayPass(state, "sick");
