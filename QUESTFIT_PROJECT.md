@@ -136,6 +136,8 @@ The Character page is separate from the Today dashboard. The dashboard still pro
 - It is a rigged glTF model (`public/models/assistant.glb`, CC0 RobotExpressive) rendered with Three.js, bundled from npm so it works offline in the mobile app.
 - It is loaded lazily after the dashboard paints; the 2D CSS slime shows until the model is ready and stays if WebGL or the model fails.
 - It waves once per session, then plays an idle loop; a class-colored rim light and glowing ring keep each class distinct.
+- It reacts to the player: thumbs-up on a completed quest, a head shake on a missed main quest, and a wave when tapped.
+- It animates at 30 fps and pauses while off-screen or while the app is in the background, to save battery.
 - Tired plays a slower idle with a slight tilt; injured plays the sitting clip. Reduced-motion users see a still frame.
 - To swap the model, replace the .glb and edit the clip names at the top of `avatar3d.js`.
 

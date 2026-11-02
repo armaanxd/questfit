@@ -9,7 +9,7 @@ const CLIPS = {
   tired: { clip: "Idle", speed: 0.55, tilt: -0.06 },
   injured: { clip: "Sitting", speed: 0.7, tilt: -0.12 },
 };
-const GREETING_CLIP = "Wave";
+const REACTIONS = { greet: "Wave", cheer: "ThumbsUp", sad: "No" };
 
 const THEMES = {
   warrior: { glow: 0x735cff },
@@ -40,7 +40,7 @@ function fitToView(model) {
   model.position.set(-center.x, -box.min.y * scale - 0.55, -center.z);
 }
 
-export async function mountAvatar(container, { className = "warrior", avatarState = "normal" } = {}) {
+export async function mountAvatar(container, { className = "warrior", avatarState = "normal", reaction } = {}) {
   let gltf;
   try {
     gltf = await loadModel();
@@ -99,25 +99,60 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
   const findClip = (name) => THREE.AnimationClip.findByName(gltf.animations, name);
   const loopClip = findClip(pose.clip) || findClip(CLIPS.normal.clip) || gltf.animations[0];
   const loopAction = loopClip ? mixer.clipAction(loopClip).setEffectiveTimeScale(pose.speed).play() : null;
-  const greetClip = findClip(GREETING_CLIP);
-  // Wave once per app session, then settle back into the state's loop.
-  if (!greeted && avatarState === "normal" && greetClip && loopAction) {
-    greeted = true;
-    const greet = mixer.clipAction(greetClip).setLoop(THREE.LoopOnce, 1);
-    greet.clampWhenFinished = true;
-    loopAction.stop();
-    greet.play();
-    mixer.addEventListener("finished", () => {
-      greet.fadeOut(0.4);
-      loopAction.reset().fadeIn(0.4).play();
-    });
-  }
+  let oneShot = null;
+  // Play a clip once, then crossfade back into the state's loop.
+  const playOnce = (name) => {
+    const clip = findClip(name);
+    if (!clip || !loopAction) return;
+    oneShot?.stop();
+    oneShot = mixer.clipAction(clip).reset().setLoop(THREE.LoopOnce, 1);
+    oneShot.clampWhenFinished = true;
+    oneShot.play();
+    loopAction.fadeOut(0.25);
+    oneShot.fadeIn(0.25);
+  };
+  mixer.addEventListener("finished", ({ action }) => {
+    if (action !== oneShot) return;
+    action.fadeOut(0.4);
+    loopAction.reset().fadeIn(0.4).play();
+  });
+
+  if (REACTIONS[reaction]) playOnce(REACTIONS[reaction]);
+  else if (!greeted && avatarState === "normal") playOnce(REACTIONS.greet);
+  greeted = true;
 
   container.replaceChildren(renderer.domElement);
 
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const clock = new THREE.Clock();
-  let frame;
+  let frame = 0;
+  let onScreen = true;
+  let sinceRender = 0;
+  // Capped at 30 fps: 120 Hz phones otherwise burn most of a CPU core on an idle loop.
+  const animate = () => {
+    frame = requestAnimationFrame(animate);
+    sinceRender += clock.getDelta();
+    if (sinceRender < 1 / 30) return;
+    mixer.update(sinceRender);
+    sinceRender = 0;
+    holder.rotation.y = Math.sin(clock.elapsedTime * 0.65) * 0.18;
+    renderer.render(scene, camera);
+  };
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  // Only animate while the panel is visible and the app is in the foreground, to save battery.
+  const updateRunning = () => {
+    if (reduceMotion) return;
+    const shouldRun = onScreen && !document.hidden && container.isConnected;
+    if (shouldRun && !frame) {
+      clock.getDelta(); // drop the paused time so clips don't jump ahead
+      sinceRender = 1 / 30;
+      animate();
+    } else if (!shouldRun) stop();
+  };
+
   const resize = () => {
     if (!container.isConnected) return;
     const nextWidth = Math.max(1, container.clientWidth);
@@ -125,38 +160,34 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
     camera.aspect = nextWidth / nextHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(nextWidth, nextHeight, false);
-    if (reduceMotion) renderer.render(scene, camera);
+    if (!frame) renderer.render(scene, camera);
   };
-  const observer = new ResizeObserver(resize);
-  observer.observe(container);
-  const dispose = () => {
-    observer.disconnect();
-    cancelAnimationFrame(frame);
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(container);
+  const visibilityObserver = new IntersectionObserver(([entry]) => {
+    onScreen = entry.isIntersecting;
+    updateRunning();
+  });
+  visibilityObserver.observe(container);
+  document.addEventListener("visibilitychange", updateRunning);
+  if (!reduceMotion) renderer.domElement.addEventListener("pointerdown", () => playOnce(REACTIONS.greet));
+
+  // A paused loop can't notice the dashboard re-rendering, so check for removal on a slow timer.
+  const watcher = setInterval(() => {
+    if (container.isConnected) return;
+    clearInterval(watcher);
+    stop();
+    resizeObserver.disconnect();
+    visibilityObserver.disconnect();
+    document.removeEventListener("visibilitychange", updateRunning);
     mixer.stopAllAction();
     mixer.uncacheRoot(assistant);
     ring.geometry.dispose();
     ring.material.dispose();
     renderer.dispose();
-  };
+  }, 1000);
 
-  if (reduceMotion) {
-    mixer.update(0);
-    renderer.render(scene, camera);
-    // Nothing animates, so check rarely just to release GPU resources after a re-render.
-    const watcher = setInterval(() => {
-      if (container.isConnected) return;
-      clearInterval(watcher);
-      dispose();
-    }, 2000);
-    return;
-  }
-
-  const animate = () => {
-    if (!container.isConnected) return dispose();
-    mixer.update(clock.getDelta());
-    holder.rotation.y = Math.sin(clock.elapsedTime * 0.65) * 0.18;
-    renderer.render(scene, camera);
-    frame = requestAnimationFrame(animate);
-  };
-  animate();
+  mixer.update(0);
+  renderer.render(scene, camera);
+  updateRunning();
 }

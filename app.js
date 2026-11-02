@@ -45,6 +45,7 @@ let state = loadState();
 let sessionActive = Boolean(state) || localStorage.getItem(SESSION_KEY) === "active";
 let activeView = "dashboard";
 let rolloverTimer = null;
+let companionReaction = null; // played once by the assistant on the next dashboard render
 
 function loadState() {
   try {
@@ -467,10 +468,12 @@ function renderDashboard() {
 
 function mountCompanion() {
   const target = document.querySelector('[data-avatar-target="companion"]');
+  const reaction = companionReaction;
+  companionReaction = null;
   if (!target) return;
   // Loaded lazily so Three.js never delays the first paint; the 2D slime shows until the model is ready.
   import("./avatar3d.js")
-    .then(({ mountAvatar }) => mountAvatar(target, { className: state.profile.className, avatarState: state.player.avatarState }))
+    .then(({ mountAvatar }) => mountAvatar(target, { className: state.profile.className, avatarState: state.player.avatarState, reaction }))
     .catch((error) => console.warn("3D assistant failed to load", error));
 }
 
@@ -483,14 +486,14 @@ function bindDashboardEvents() {
   document.querySelectorAll(".log-form").forEach((form) => form.addEventListener("submit", (event) => {
     event.preventDefault();
     const amount = new FormData(event.currentTarget).get("amount");
-    logProgress(state, event.currentTarget.dataset.questId, amount);
+    if (logProgress(state, event.currentTarget.dataset.questId, amount).reward) companionReaction = "cheer";
     saveState();
     render();
   }));
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.action;
-    if (action === "complete") completeQuest(state, button.dataset.questId);
-    if (action === "miss-main") missQuest(state, state.quests.find((quest) => quest.main)?.id);
+    if (action === "complete" && completeQuest(state, button.dataset.questId).changed) companionReaction = "cheer";
+    if (action === "miss-main" && missQuest(state, state.quests.find((quest) => quest.main)?.id).changed) companionReaction = "sad";
     if (action === "rest") useDayPass(state, "rest");
     if (action === "sick") useDayPass(state, "sick");
     if (action === "workout-info") {
