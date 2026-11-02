@@ -634,6 +634,14 @@ async function syncHealth() {
   const previousDay = state.day;
   state = resetForNewDay(state); // roll the day first so the read and the proof land on today's board
   if (state.day !== previousDay) saveState();
+  if (!(await health.isConnected())) {
+    if (!state) return;
+    state.health.connected = false; // brings the Connect Health card back
+    state.notice = "Health Connect access was removed. Timer and sets still work.";
+    saveState();
+    render();
+    return;
+  }
   try {
     const now = new Date();
     const dayStart = new Date(`${state.day}T00:00:00`); // local midnight of the board's day

@@ -8,10 +8,21 @@ export async function isAvailable() {
   }
 }
 
+const READ = { read: ["steps", "workouts", "heartRate"] };
+const usable = ({ readAuthorized }) => readAuthorized.includes("steps") || readAuthorized.includes("workouts");
+
 export async function connect() {
   try {
-    const { readAuthorized } = await Health.requestAuthorization({ read: ["steps", "workouts", "heartRate"] });
-    return readAuthorized.includes("steps") || readAuthorized.includes("workouts");
+    return usable(await Health.requestAuthorization(READ));
+  } catch {
+    return false;
+  }
+}
+
+// Checks without prompting, so a permission revoked in Health Connect settings is noticed.
+export async function isConnected() {
+  try {
+    return usable(await Health.checkAuthorization(READ));
   } catch {
     return false;
   }
