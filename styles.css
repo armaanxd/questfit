@@ -541,3 +541,14 @@ button:not(:disabled):active, .quick-action:active, .choice-card:active, .mode-o
   .stats-page-chart { margin: 8px -10px 20px; }
   .reset-banner { margin: 18px 0 22px; }
 }
+
+.proof-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.proof-badge { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; color: var(--muted); }
+.quest-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.quest-actions:empty { display: none; }
+.session-timer { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 18px; }
+.manual-log { margin-top: 10px; }
+.manual-log summary { cursor: pointer; }
+.connect-card { margin-bottom: 18px; }
+.connect-card .secondary-button { margin-right: 10px; }
+.sync-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }

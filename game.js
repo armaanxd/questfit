@@ -1,3 +1,7 @@
+import { currentTimeZone, todayKey } from "./time.js";
+import { workoutCategory, acceptProof, progressOf, rewardFor } from "./verify.js";
+export { currentTimeZone, todayKey } from "./time.js";
+
 export const QUEST_BLUEPRINTS = {
   warrior: [
     { key: "iron-gate", category: "strength", icon: "⚔", title: "Break the Iron Gate", description: "Complete a focused strength session and clear the first gate.", target: 30, unit: "min", logStep: 10, xp: 100, coins: 20, main: true },
@@ -31,6 +35,7 @@ const MODES = {
   hardcore: { label: "Hardcore", xpDebuff: 50, coinLoss: 0.05, avatar: "injured", streak: "reset" },
 };
 const MAX_MONTHLY_SHIELD_USES = 4;
+const MAX_SESSION_MS = 3 * 60 * 60 * 1000;
 export const STAT_KEYS = ["strength", "cardio", "mobility", "endurance", "discipline", "recovery", "agility", "versatility"];
 const QUEST_STAT_MAP = { strength: "strength", cardio: "cardio", mobility: "mobility", steps: "endurance" };
 export const FITNESS_LEVELS = {
@@ -53,29 +58,6 @@ export function fitnessLevelInfo(level) {
 
 export function makeStats() {
   return Object.fromEntries(STAT_KEYS.map((key) => [key, 0]));
-}
-
-export function currentTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
-export function todayKey(date = new Date(), timeZone = currentTimeZone()) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-    return `${values.year}-${values.month}-${values.day}`;
-  } catch {
-    return todayKey(date, "UTC");
-  }
 }
 
 export function workoutRotationDay(day) {
@@ -127,10 +109,18 @@ export function makeQuests(day = todayKey(), className = "warrior") {
     ...quest,
     kind: quest.kind || (quest.main ? "main" : "side"),
     id: `${day}-${quest.key}`,
+    day,
+    verify: verifyListFor(quest),
+    proofs: [],
     progress: 0,
     statProgressAwarded: 0,
     status: "active",
   }));
+}
+
+export function verifyListFor(quest) {
+  const list = quest.unit === "steps" ? ["health-steps", "manual"] : quest.unit === "sets" ? ["sets", "manual"] : ["health-workout", "timer", "manual"];
+  return quest.main ? list.filter((source) => source !== "manual") : list;
 }
 
 export function modeDetails(mode) {
@@ -173,7 +163,7 @@ export function rankProgress(xp, className = "warrior", penaltyMode = "balanced"
   };
 }
 
-export function resetForNewDay(state, day) {
+export function resetForNewDay(state, day, now = Date.now()) {
   state.profile ??= {};
   state.profile.timeZone = currentTimeZone();
   day = day || todayKey(new Date(), state.profile.timeZone);
@@ -191,23 +181,55 @@ export function resetForNewDay(state, day) {
     state.questVersion = 2;
     state.notice = "Your class has shaped a new quest board.";
   }
+  state.activeSession ??= null;
+  for (const quest of state.quests) {
+    quest.day ??= state.day;
+    quest.verify ??= verifyListFor(quest);
+    const at = new Date(`${quest.day}T12:00:00`).toISOString();
+    quest.proofs ??= quest.progress > 0 ? [{ id: `manual-migrated-${quest.id}`, source: "manual", amount: quest.progress, startedAt: at, endedAt: at, verified: false, meta: {} }] : [];
+  }
   if (state.day === day) return state;
+  // Credit a running session to its start day before the miss check below.
+  if (state.activeSession) finishSession(state, now);
+  let missedDays = 0;
+  // Only roll forward; a clock or time zone moving back just rebuilds the board.
+  if (day > state.day) {
+    const yesterdayMain = state.quests.find((quest) => quest.main && quest.status === "active");
+    if (yesterdayMain) {
+      missQuest(state, yesterdayMain.id);
+      missedDays += 1;
+    }
+    for (let skipped = nextDay(state.day); skipped < day; skipped = nextDay(skipped)) {
+      resetShieldMonth(state, skipped);
+      applyMiss(state, "Main quest (day not opened)");
+      missedDays += 1;
+    }
+  }
   state.day = day;
   state.quests = makeQuests(day, state.profile.className);
   state.comboAwarded = false;
-  state.player.avatarState = "normal";
-  state.player.xpDebuffPct = 0;
-  state.notice = "A new chapter begins. Your quests are ready.";
+  state.notice = missedDays
+    ? `${missedDays} missed main quest${missedDays === 1 ? "" : "s"} counted. ${state.notice}`
+    : "A new chapter begins. Your quests are ready.";
   if (state.player.passMonth !== day.slice(0, 7)) {
     state.player.passMonth = day.slice(0, 7);
     state.player.restDaysUsed = 0;
     state.player.sickDaysUsed = 0;
   }
-  if (state.player.shieldMonth !== day.slice(0, 7)) {
-    state.player.shieldMonth = day.slice(0, 7);
-    state.player.shieldsUsedThisMonth = 0;
-  }
+  resetShieldMonth(state, day);
   return state;
+}
+
+function nextDay(day) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function resetShieldMonth(state, day) {
+  if (state.player.shieldMonth === day.slice(0, 7)) return;
+  state.player.shieldMonth = day.slice(0, 7);
+  state.player.shieldsUsedThisMonth = 0;
 }
 
 function addHistory(state, entry) {
@@ -216,13 +238,14 @@ function addHistory(state, entry) {
 }
 
 function award(state, quest) {
+  const reward = rewardFor(quest);
   const multiplier = 1 - state.player.xpDebuffPct / 100;
-  const xpEarned = Math.max(0, Math.floor(quest.xp * multiplier));
+  const xpEarned = Math.max(0, Math.floor(reward.xp * multiplier));
   state.player.xp += xpEarned;
-  state.player.coins += quest.coins;
+  state.player.coins += reward.coins;
   state.player.completed += 1;
-  addHistory(state, { type: "complete", title: quest.title, xp: xpEarned, coins: quest.coins });
-  return { xpEarned, coins: quest.coins };
+  addHistory(state, { type: "complete", title: quest.title, xp: xpEarned, coins: reward.coins });
+  return { xpEarned, coins: reward.coins };
 }
 
 function updateQuestStats(state, quest) {
@@ -246,14 +269,13 @@ function updateQuestStats(state, quest) {
   }
 }
 
-export function completeQuest(state, questId) {
-  const quest = state.quests.find((item) => item.id === questId);
-  if (!quest || quest.status !== "active") return { changed: false };
-  quest.progress = quest.target;
-  updateQuestStats(state, quest);
+function completeQuest(state, quest) {
   quest.status = "completed";
   const reward = award(state, quest);
   if (quest.main) {
+    // A miss penalty lasts until the next main quest is done.
+    state.player.avatarState = "normal";
+    state.player.xpDebuffPct = 0;
     state.player.streak += 1;
     state.player.longestStreak = Math.max(state.player.longestStreak, state.player.streak);
   }
@@ -268,22 +290,91 @@ export function completeQuest(state, questId) {
   return { changed: true, quest, reward };
 }
 
-export function logProgress(state, questId, amount) {
+export function addProof(state, questId, proof, now = Date.now()) {
   const quest = state.quests.find((item) => item.id === questId);
-  const value = Number(amount);
-  if (!quest || quest.status !== "active" || !Number.isFinite(value) || value <= 0) return { changed: false };
-  quest.progress = Math.min(quest.target, quest.progress + value);
+  if (!quest || quest.status !== "active") return { changed: false };
+  const result = acceptProof(quest, proof, state.quests.flatMap((item) => item.proofs), now, state.profile.timeZone);
+  if (!result.ok) {
+    state.notice = result.reason;
+    return { changed: false, reason: result.reason };
+  }
+  if (result.replaces) quest.proofs = quest.proofs.filter((item) => item.id !== proof.id);
+  quest.proofs.push(result.proof);
+  quest.progress = progressOf(quest);
   updateQuestStats(state, quest);
-  if (quest.progress >= quest.target) return completeQuest(state, questId);
+  if (quest.progress >= quest.target) return completeQuest(state, quest);
   state.notice = `${quest.title}: ${formatValue(quest.progress)} / ${formatValue(quest.target)} ${quest.unit}.`;
   return { changed: true, quest };
+}
+
+const iso = (ms) => new Date(ms).toISOString();
+
+export function logProgress(state, questId, amount, now = Date.now()) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) return { changed: false };
+  return addProof(state, questId, { id: `manual-${now}`, source: "manual", amount: value, startedAt: iso(now), endedAt: iso(now), meta: {} }, now);
+}
+
+export function logSet(state, questId, now = Date.now()) {
+  return addProof(state, questId, { id: `set-${now}`, source: "sets", amount: 1, startedAt: iso(now), endedAt: iso(now), meta: {} }, now);
+}
+
+export function startSession(state, questId, now = Date.now()) {
+  const quest = state.quests.find((item) => item.id === questId);
+  if (!quest || quest.status !== "active" || !quest.verify.includes("timer")) return { changed: false };
+  if (state.activeSession) {
+    state.notice = "Finish your current session first.";
+    return { changed: false };
+  }
+  state.activeSession = { questId, startedAt: now, pausedMs: 0, pausedAt: null };
+  state.notice = `${quest.title}: timer started.`;
+  return { changed: true, quest };
+}
+
+export function pauseSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session || session.pausedAt) return { changed: false };
+  session.pausedAt = now;
+  return { changed: true };
+}
+
+export function resumeSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session || !session.pausedAt) return { changed: false };
+  session.pausedMs += now - session.pausedAt;
+  session.pausedAt = null;
+  return { changed: true };
+}
+
+// Credit ends at local midnight of the start day or after MAX_SESSION_MS.
+export const sessionEnd = (session, now) => Math.min(now, new Date(session.startedAt).setHours(24, 0, 0, 0), session.startedAt + MAX_SESSION_MS);
+
+export function finishSession(state, now = Date.now()) {
+  const session = state.activeSession;
+  if (!session) return { changed: false };
+  // Credit stops at local midnight of the start day or after MAX_SESSION_MS, so a forgotten timer can't farm time.
+  const end = sessionEnd(session, now);
+  const pausedMs = session.pausedMs + (session.pausedAt ? Math.max(0, end - session.pausedAt) : 0);
+  const amount = Math.floor((end - session.startedAt - pausedMs) / 60000);
+  state.activeSession = null;
+  if (amount < 1) {
+    state.notice = "Under a minute, nothing logged.";
+    return { changed: false };
+  }
+  const result = addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(end), meta: { pausedMs } }, now);
+  if (!result.changed && !result.reason) state.notice = "Quest already complete; minutes not credited.";
+  return result;
 }
 
 export function missQuest(state, questId) {
   const quest = state.quests.find((item) => item.id === questId);
   if (!quest || !quest.main || quest.status !== "active") return { changed: false };
-  const mode = modeDetails(state.profile.penaltyMode);
   quest.status = "missed";
+  return { ...applyMiss(state, quest.title), quest };
+}
+
+function applyMiss(state, title) {
+  const mode = modeDetails(state.profile.penaltyMode);
   state.player.missed += 1;
   if (mode.streak === "reset" && state.player.shields > 0 && state.player.shieldsUsedThisMonth < MAX_MONTHLY_SHIELD_USES) {
     state.player.shields -= 1;
@@ -292,17 +383,17 @@ export function missQuest(state, questId) {
     state.player.xpDebuffPct = 0;
     addHistory(state, { type: "shield", title: "Shield absorbed the loss" });
     state.notice = `Shield used. Your streak survives; ${MAX_MONTHLY_SHIELD_USES - state.player.shieldsUsedThisMonth} shield use${MAX_MONTHLY_SHIELD_USES - state.player.shieldsUsedThisMonth === 1 ? "" : "s"} left this month.`;
-    return { changed: true, quest, shieldUsed: true };
+    return { changed: true, shieldUsed: true };
   }
   state.player.avatarState = mode.avatar;
   state.player.xpDebuffPct = mode.xpDebuff;
   if (mode.streak === "reset") state.player.streak = 0;
   if (mode.coinLoss) state.player.coins = Math.max(0, Math.floor(state.player.coins * (1 - mode.coinLoss)));
-  addHistory(state, { type: "miss", title: quest.title, mode: state.profile.penaltyMode });
+  addHistory(state, { type: "miss", title, mode: state.profile.penaltyMode });
   state.notice = mode.streak === "pause"
     ? "The quest was missed. Your streak pauses, and your character is safe."
-    : `The quest was missed. ${mode.label} penalty applied for the next quest.`;
-  return { changed: true, quest };
+    : `The quest was missed. ${mode.label} penalty applied until your next main quest.`;
+  return { changed: true };
 }
 
 export function useDayPass(state, kind) {
@@ -321,4 +412,39 @@ export function useDayPass(state, kind) {
 
 export function formatValue(value) {
   return new Intl.NumberFormat().format(value);
+}
+
+const KIND_ORDER = { main: 0, side: 1, class: 2 };
+
+export function applyHealthReading(state, reading, now = Date.now()) {
+  state.health ??= { connected: false, lastSyncAt: null };
+  const notice = state.notice;
+  const day = state.day;
+  const active = () => state.quests.filter((q) => q.status === "active");
+  let added = 0;
+  const add = (quest, proof) => {
+    const result = addProof(state, quest.id, proof, now);
+    if (result.changed) added += 1;
+    return result.changed;
+  };
+  for (const quest of active().filter((q) => q.verify.includes("health-steps"))) {
+    const current = quest.proofs.filter((p) => p.source === "health-steps").reduce((sum, p) => sum + p.amount, 0);
+    if (reading.steps.total > current) add(quest, { id: `health-steps-${day}`, source: "health-steps", amount: reading.steps.total, startedAt: reading.dayStart, endedAt: iso(now), meta: {} });
+  }
+  const sess = state.activeSession;
+  for (const workout of reading.workouts) {
+    // Leave workouts overlapping a running timer for a later sync, so the timer proof wins.
+    if (sess && Date.parse(workout.startedAt) < now && Date.parse(workout.endedAt) > sess.startedAt) continue;
+    if (state.quests.some((q) => q.proofs.some((p) => p.id === workout.id))) continue;
+    const { category, known } = workoutCategory(workout.type);
+    const candidates = active()
+      .filter((q) => q.unit === "min" && q.verify.includes("health-workout") && q.category === category)
+      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+    const proof = { id: workout.id, source: "health-workout", amount: workout.minutes, startedAt: workout.startedAt, endedAt: workout.endedAt, meta: { app: workout.app, heartRateSamples: workout.heartRateSamples, knownType: known } };
+    candidates.some((quest) => add(quest, proof));
+  }
+  state.health.lastSyncAt = now;
+  if (!added) state.notice = notice;
+  else state.notice = `Health Connect added ${added} update${added === 1 ? "" : "s"}.`;
+  return { changed: added > 0 };
 }

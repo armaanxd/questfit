@@ -1,18 +1,25 @@
 import {
   createState,
-  completeQuest,
   fitnessLevelInfo,
   formatValue,
   levelProgress,
   rankProgress,
+  finishSession,
+  sessionEnd,
   logProgress,
+  logSet,
   missQuest,
   modeDetails,
+  pauseSession,
   resetForNewDay,
+  resumeSession,
+  startSession,
   STAT_KEYS,
   useDayPass,
   workoutRotationDay,
-} from "./game.js?v=7";
+  applyHealthReading,
+} from "./game.js?v=8";
+import * as health from "./health.js";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -45,6 +52,8 @@ let state = loadState();
 let sessionActive = Boolean(state) || localStorage.getItem(SESSION_KEY) === "active";
 let activeView = "dashboard";
 let rolloverTimer = null;
+let tickTimer = null;
+let healthAvailable = null; // null until health.isAvailable() resolves
 let companionReaction = null; // played once by the assistant on the next dashboard render
 
 function loadState() {
@@ -370,6 +379,43 @@ function renderOnboarding() {
   });
 }
 
+const REST_MS = 30_000;
+const BADGES = { "health-steps": "✓ Health Connect", timer: "⏱ Timer", manual: "Self-reported · ½ XP" };
+
+function proofBadges(quest) {
+  const labels = new Set(quest.proofs.map((p) => (p.source === "health-workout" ? (p.verified ? "✓ Watch workout" : BADGES.manual) : BADGES[p.source])));
+  labels.delete(undefined); // sets proofs have no badge
+  return [...labels].map((label) => `<span class="proof-badge">${label}</span>`).join("");
+}
+
+const clock = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
+const sessionMs = (session, now = Date.now()) => Math.min(session.pausedAt ?? now, sessionEnd(session, now)) - session.startedAt - session.pausedMs;
+const restLeftMs = (quest, now = Date.now()) => {
+  const last = quest.proofs.filter((p) => p.source === "sets").reduce((max, p) => Math.max(max, Date.parse(p.endedAt)), 0);
+  return Math.max(0, last + REST_MS - now);
+};
+
+function renderSessionControls(session) {
+  return `<span class="session-timer" data-timer>${clock(sessionMs(session))}</span><button class="small-button" data-action="${session.pausedAt ? "resume-session" : "pause-session"}">${session.pausedAt ? "Resume" : "Pause"}</button><button class="small-button" data-action="finish-session">Finish</button>`;
+}
+
+function renderQuestActions(quest) {
+  const session = state.activeSession;
+  if (quest.unit === "steps") return state.health?.connected ? `<button class="small-button" data-action="sync-health">Sync steps</button>` : "";
+  if (quest.unit === "min") {
+    if (session?.questId === quest.id) return renderSessionControls(session);
+    return session ? "" : `<button class="small-button" data-action="start-session" data-quest-id="${quest.id}">Start session</button>`;
+  }
+  if (quest.unit === "sets") {
+    const left = restLeftMs(quest);
+    return `<button class="small-button" data-action="set-done" data-quest-id="${quest.id}" ${left ? "disabled" : ""}>${left ? `Rest <span data-rest="${quest.id}">${Math.ceil(left / 1000)}s</span>` : "Set done"}</button>`;
+  }
+  return "";
+}
+
 function renderQuest(quest) {
   const percent = Math.round((quest.progress / quest.target) * 100);
   const finished = quest.status !== "active";
@@ -382,12 +428,14 @@ function renderQuest(quest) {
         <p>${quest.description}</p>
         <div class="progress-meta"><span>${finished ? prettyStatus(quest.status) : `${formatValue(quest.progress)} / ${formatValue(quest.target)} ${quest.unit}`}</span><strong>${percent}%</strong></div>
         <div class="progress-track"><span style="width: ${percent}%"></span></div>
-        ${finished ? `<div class="quest-result">${quest.status === "completed" ? "✓ Quest complete" : `◌ ${prettyStatus(quest.status)}`}</div>` : `
-          <form class="log-form" data-quest-id="${quest.id}">
-            <input aria-label="Amount to log for ${escapeHtml(quest.title)}" name="amount" type="number" min="1" step="1" value="${quest.logStep}" />
-            <button class="small-button" type="submit">Log ${quest.unit}</button>
-            <button class="text-button" type="button" data-action="complete" data-quest-id="${quest.id}">Complete</button>
-          </form>
+        ${finished ? `<div class="quest-result">${quest.status === "completed" ? "✓ Quest complete" : `◌ ${prettyStatus(quest.status)}`}</div>${state.activeSession?.questId === quest.id ? `<div class="quest-actions">${renderSessionControls(state.activeSession)}</div>` : ""}` : `
+          <div class="proof-badges">${proofBadges(quest)}</div>
+          <div class="quest-actions">${renderQuestActions(quest)}</div>
+          ${quest.main ? "" : `<details class="manual-log"><summary class="text-button">Log manually</summary>
+            <form class="log-form" data-quest-id="${quest.id}">
+              <input aria-label="Amount to log for ${escapeHtml(quest.title)}" name="amount" type="number" min="1" step="1" value="${quest.logStep}" />
+              <button class="small-button" type="submit">Log ${quest.unit}</button>
+            </form></details>`}
         `}
       </div>
     </article>
@@ -413,6 +461,23 @@ function renderQuestsPage() {
 function greeting() {
   const hour = new Date().getHours();
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+
+function renderConnectCard() {
+  if (state.health?.connected) return "";
+  const why = "QuestFit reads your steps, workouts and heart rate from Health Connect to verify quests. Nothing leaves your phone.";
+  const action = !isNative
+    ? `<p class="muted">Health Connect verification is in the Android app.</p>`
+    : healthAvailable === false
+      ? `<p class="muted">Health Connect isn't available on this device</p><button class="secondary-button" data-action="health-settings">Open Health Connect settings</button>`
+      : `<button class="secondary-button" data-action="connect-health">Connect Health</button>`;
+  return `<section class="panel connect-card"><div class="panel-heading"><div><p class="eyebrow">VERIFIED QUESTS</p><h2>Connect Health</h2></div></div><p class="muted">${why}</p>${action}<button class="text-button" data-action="privacy-policy">Privacy policy</button></section>`;
+}
+
+function renderSyncNow() {
+  if (!state.health?.connected) return "";
+  const at = state.health.lastSyncAt ? new Date(state.health.lastSyncAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "never";
+  return `<div class="sync-row"><button class="text-button" data-action="sync-health">Sync now</button><small class="muted">Last synced at ${at}</small></div>`;
 }
 
 function renderDashboard() {
@@ -449,7 +514,7 @@ function renderDashboard() {
           <div class="notice"><span>✦</span>${escapeHtml(state.notice)}</div>
           <section class="hero-card"><div class="hero-copy"><p class="eyebrow">GATE 01 · THE FIRST SIGNAL</p><h2>${story}</h2><p class="muted">Complete your main quest to protect your streak. Side quests are optional, but they sharpen the build.</p><div class="hero-stats"><span><strong>${formatValue(state.player.xp)}</strong> total XP</span><span><strong>${formatValue(state.player.coins)}</strong> coins</span><span><strong>${state.player.shields}</strong> shield${state.player.shields === 1 ? "" : "s"} · ${state.player.shieldsUsedThisMonth}/4 used</span></div></div><div class="hero-sigil">${iconForClass(state.profile.className)}</div></section>
           <div class="section-heading"><div><p class="eyebrow">TODAY'S PROGRESS</p><h2>Your next move</h2></div><span class="board-count">${completed} / ${dailyQuests.length} complete</span></div>
-          <div class="dashboard-cards"><section class="panel dashboard-quest-preview"><div class="panel-heading"><div><p class="eyebrow">MAIN QUEST</p><h2>${mainQuest?.title || "No active main quest"}</h2></div><span class="quest-mini-icon">${mainQuest?.icon || "✦"}</span></div><p class="muted">${mainQuest?.description || "Your next board will appear at local midnight."}</p><div class="progress-meta"><span>${mainQuest?.status === "completed" ? "Complete" : `${formatValue(mainQuest?.progress || 0)} / ${formatValue(mainQuest?.target || 0)} ${mainQuest?.unit || ""}`}</span><strong>${mainQuest ? Math.round((mainQuest.progress / mainQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width: ${mainQuest ? Math.round((mainQuest.progress / mainQuest.target) * 100) : 0}%"></span></div><button class="secondary-button wide dashboard-link" data-view="quests">Open quest board <span>→</span></button></section><section class="panel quick-actions"><div class="panel-heading"><div><p class="eyebrow">QUICK ACTIONS</p><h2>Keep the run moving</h2></div><span class="book-icon">⌁</span></div><button class="quick-action" data-view="workouts"><span>♜</span><span><strong>Log a workout</strong><small>Strength, cardio, or mobility</small></span><b>→</b></button><button class="quick-action" data-view="stats"><span>◎</span><span><strong>View stat sheet</strong><small>See how today changed you</small></span><b>→</b></button><button class="quick-action" data-view="quests"><span>✦</span><span><strong>Review all quests</strong><small>Includes your ${prettyClass(state.profile.className)} trial</small></span><b>→</b></button></section></div>
+          ${renderConnectCard()}<div class="dashboard-cards"><section class="panel dashboard-quest-preview"><div class="panel-heading"><div><p class="eyebrow">MAIN QUEST</p><h2>${mainQuest?.title || "No active main quest"}</h2></div><span class="quest-mini-icon">${mainQuest?.icon || "✦"}</span></div><p class="muted">${mainQuest?.description || "Your next board will appear at local midnight."}</p><div class="progress-meta"><span>${mainQuest?.status === "completed" ? "Complete" : `${formatValue(mainQuest?.progress || 0)} / ${formatValue(mainQuest?.target || 0)} ${mainQuest?.unit || ""}`}</span><strong>${mainQuest ? Math.round((mainQuest.progress / mainQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width: ${mainQuest ? Math.round((mainQuest.progress / mainQuest.target) * 100) : 0}%"></span></div>${renderSyncNow()}<button class="secondary-button wide dashboard-link" data-view="quests">Open quest board <span>→</span></button></section><section class="panel quick-actions"><div class="panel-heading"><div><p class="eyebrow">QUICK ACTIONS</p><h2>Keep the run moving</h2></div><span class="book-icon">⌁</span></div><button class="quick-action" data-view="workouts"><span>♜</span><span><strong>Log a workout</strong><small>Strength, cardio, or mobility</small></span><b>→</b></button><button class="quick-action" data-view="stats"><span>◎</span><span><strong>View stat sheet</strong><small>See how today changed you</small></span><b>→</b></button><button class="quick-action" data-view="quests"><span>✦</span><span><strong>Review all quests</strong><small>Includes your ${prettyClass(state.profile.className)} trial</small></span><b>→</b></button></section></div>
           <section class="safety-panel"><div><p class="eyebrow">NO PENALTY DAYS</p><h3>Recovery is part of the campaign.</h3><p class="muted">Use a rest or sick day to protect your streak without explaining yourself.</p></div><div class="pass-actions"><button class="secondary-button" data-action="rest" ${canRest ? "" : "disabled"}>Rest day <small>${2 - state.player.restDaysUsed} left</small></button><button class="secondary-button" data-action="sick" ${canSick ? "" : "disabled"}>Sick day <small>${2 - state.player.sickDaysUsed} left</small></button></div></section>
         </div><div class="page-view ${activeView === "workouts" ? "is-active" : ""}" id="workouts-view">${renderWorkoutsPage()}</div><div class="page-view ${activeView === "quests" ? "is-active" : ""}" id="quests-view">${renderQuestsPage()}</div><div class="page-view ${activeView === "stats" ? "is-active" : ""}" id="stats-view">${renderStatsPage()}</div><div class="page-view ${activeView === "character" ? "is-active" : ""}" id="character-view">${renderCharacterPage()}</div></section>
         <aside class="right-column" id="character">
@@ -464,6 +529,7 @@ function renderDashboard() {
   `;
   bindDashboardEvents();
   mountCompanion();
+  startTicker();
 }
 
 function mountCompanion() {
@@ -492,8 +558,23 @@ function bindDashboardEvents() {
   }));
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.action;
-    if (action === "complete" && completeQuest(state, button.dataset.questId).changed) companionReaction = "cheer";
     if (action === "miss-main" && missQuest(state, state.quests.find((quest) => quest.main)?.id).changed) companionReaction = "sad";
+    const id = button.dataset.questId;
+    if (action === "start-session") startSession(state, id);
+    if (action === "pause-session") pauseSession(state);
+    if (action === "resume-session") resumeSession(state);
+    if (action === "finish-session" && finishSession(state).reward) companionReaction = "cheer";
+    if (action === "set-done" && logSet(state, id).reward) companionReaction = "cheer";
+    if (action === "sync-health") {
+      syncHealth();
+      return;
+    }
+    if (action === "connect-health") {
+      connectHealth();
+      return;
+    }
+    if (action === "health-settings") health.openSettings().catch(() => {});
+    if (action === "privacy-policy") health.showPrivacyPolicy().catch(() => {});
     if (action === "rest") useDayPass(state, "rest");
     if (action === "sick") useDayPass(state, "sick");
     if (action === "workout-info") {
@@ -533,7 +614,62 @@ function bindDashboardEvents() {
   });
 }
 
+function startTicker() {
+  const timer = document.querySelector("[data-timer]");
+  const rests = document.querySelectorAll("[data-rest]");
+  if (!timer && !rests.length) return;
+  tickTimer = setInterval(() => {
+    if (timer && state.activeSession) timer.textContent = clock(sessionMs(state.activeSession));
+    for (const el of rests) {
+      const quest = state.quests.find((q) => q.id === el.dataset.rest);
+      const left = quest ? restLeftMs(quest) : 0;
+      if (!left) return render(); // rest over: re-enable the button
+      el.textContent = `${Math.ceil(left / 1000)}s`;
+    }
+  }, 1000);
+}
+
+async function syncHealth() {
+  if (!state?.health?.connected) return;
+  const previousDay = state.day;
+  state = resetForNewDay(state); // roll the day first so the read and the proof land on today's board
+  if (state.day !== previousDay) saveState();
+  if (!(await health.isConnected())) {
+    if (!state) return;
+    state.health.connected = false; // brings the Connect Health card back
+    state.notice = "Health Connect access was removed. Timer and sets still work.";
+    saveState();
+    render();
+    return;
+  }
+  try {
+    const now = new Date();
+    const dayStart = new Date(`${state.day}T00:00:00`); // local midnight of the board's day
+    const reading = await health.readToday(dayStart, now);
+    if (!state) return; // campaign was reset mid-sync
+    if (applyHealthReading(state, reading, now.getTime()).changed) companionReaction = "cheer";
+  } catch (error) {
+    if (!state) return;
+    state.notice = `Health sync failed: ${error?.message || "unknown error"}`;
+  }
+  saveState();
+  render();
+}
+
+async function connectHealth() {
+  if (await health.connect()) {
+    state.health = { connected: true, lastSyncAt: null };
+    state.notice = "Health Connect connected.";
+    await syncHealth();
+    return;
+  }
+  state.notice = "Health access wasn't granted. Timer and sets still work.";
+  saveState();
+  render();
+}
+
 function render() {
+  clearInterval(tickTimer);
   if (!state || !sessionActive) return renderLogin();
   const previousDay = state.day;
   state = resetForNewDay(state);
@@ -558,9 +694,15 @@ function scheduleDailyRollover() {
 
 render();
 scheduleDailyRollover();
+syncHealth();
+health.isAvailable().then((ok) => {
+  healthAvailable = ok;
+  if (state && sessionActive && !state.health?.connected) render();
+});
 if (!isNative && "serviceWorker" in navigator) navigator.serviceWorker.register("./notification-worker.js").catch(() => {});
 
 // Android hardware back: return to Today before leaving the app.
+App.addListener("resume", () => syncHealth());
 App.addListener("backButton", () => {
   if (state && sessionActive && activeView !== "dashboard") {
     activeView = "dashboard";
