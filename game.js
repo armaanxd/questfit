@@ -35,6 +35,7 @@ const MODES = {
   hardcore: { label: "Hardcore", xpDebuff: 50, coinLoss: 0.05, avatar: "injured", streak: "reset" },
 };
 const MAX_MONTHLY_SHIELD_USES = 4;
+const MAX_SESSION_MS = 3 * 60 * 60 * 1000;
 export const STAT_KEYS = ["strength", "cardio", "mobility", "endurance", "discipline", "recovery", "agility", "versatility"];
 const QUEST_STAT_MAP = { strength: "strength", cardio: "cardio", mobility: "mobility", steps: "endurance" };
 export const FITNESS_LEVELS = {
@@ -348,14 +349,17 @@ export function resumeSession(state, now = Date.now()) {
 export function finishSession(state, now = Date.now()) {
   const session = state.activeSession;
   if (!session) return { changed: false };
-  const pausedMs = session.pausedMs + (session.pausedAt ? now - session.pausedAt : 0);
-  const amount = Math.floor((now - session.startedAt - pausedMs) / 60000);
+  // Credit stops at local midnight of the start day or after MAX_SESSION_MS, so a forgotten timer can't farm time.
+  const midnight = new Date(session.startedAt).setHours(24, 0, 0, 0);
+  const end = Math.min(now, midnight, session.startedAt + MAX_SESSION_MS);
+  const pausedMs = session.pausedMs + (session.pausedAt ? Math.max(0, end - session.pausedAt) : 0);
+  const amount = Math.floor((end - session.startedAt - pausedMs) / 60000);
   state.activeSession = null;
   if (amount < 1) {
     state.notice = "Under a minute, nothing logged.";
     return { changed: false };
   }
-  return addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(now), meta: { pausedMs } }, now);
+  return addProof(state, session.questId, { id: `timer-${session.startedAt}`, source: "timer", amount, startedAt: iso(session.startedAt), endedAt: iso(end), meta: { pausedMs } }, now);
 }
 
 export function missQuest(state, questId) {

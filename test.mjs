@@ -267,4 +267,25 @@ finishSession(ob, at(7, 25));
 applyHealthReading(ob, { dayStart: iso(at(0)), steps: { total: 0 }, workouts: [hcRun] }, at(12));
 assert.equal(ob.quests.find((q) => q.kind === "class").progress, 0);
 
+// Task 3b: timer credit is capped
+const ovn = fresh("warrior");
+const ovMain = mainOf(ovn);
+startSession(ovn, ovMain.id, at(23, 25));
+const ovMissed = ovn.player.missed;
+resetForNewDay(ovn, "2026-10-21", new Date(2026, 9, 21, 8).getTime());
+assert.equal(ovMain.proofs[0].amount, 35);
+assert.equal(ovMain.proofs[0].endedAt, iso(new Date(2026, 9, 21).getTime()));
+assert.equal(ovMain.status, "completed");
+assert.equal(ovn.player.missed, ovMissed);
+
+const fg = fresh("warrior");
+startSession(fg, mainOf(fg).id, at(10));
+finishSession(fg, at(18));
+assert.equal(mainOf(fg).proofs[0].amount, 180);
+
+const nrm = fresh("warrior");
+startSession(nrm, mainOf(nrm).id, at(10));
+finishSession(nrm, at(10, 40));
+assert.equal(mainOf(nrm).proofs[0].amount, 40);
+
 console.log("QuestFit game logic checks passed.");
