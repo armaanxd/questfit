@@ -306,7 +306,7 @@ function renderCharacterPage() {
   };
   const classQuest = state.quests.find((quest) => quest.kind === "class");
   const rank = rankProgress(state.player.xp, state.profile.className, state.profile.penaltyMode);
-  return `<div class="character-page"><div class="character-page-heading"><div><p class="eyebrow">CHARACTER FORGE</p><h1>${prettyClass(state.profile.className)}</h1><p class="muted">This is your home base between quests. Your class avatar and loadout live here; your guide stays on Today.</p></div><span class="level-orb large">${levelProgress(state.player.xp).level}</span></div><div class="character-layout"><section class="character-stage-large"><div class="player-portrait class-${state.profile.className} avatar-${state.player.avatarState}"><span class="glyph" aria-hidden="true">${iconForClass(state.profile.className)}</span><span class="portrait-name">${prettyClass(state.profile.className)}</span></div><div class="character-stage-label"><span>${state.player.avatarState}</span><small>current form</small></div></section><section class="character-details"><div class="character-detail-block"><p class="eyebrow">CURRENT RANK</p><h2>${rank.rank}-Rank</h2><p class="muted">${rank.nextRank ? `${formatValue(rank.current)} / ${formatValue(rank.needed)} XP to ${rank.nextRank}-Rank.` : "Maximum rank reached."}</p><div class="progress-track"><span style="width:${rank.percent}%"></span></div></div><div class="character-detail-block"><p class="eyebrow">TRAINING LEVEL</p><h2>${fitnessLevelInfo(state.profile.fitnessLevel).label} · ${fitnessLevelInfo(state.profile.fitnessLevel).rank}-Rank</h2><p class="muted">Chosen when this adventurer was created. It sets which workouts are recommended.</p></div><div class="character-detail-block"><p class="eyebrow">CLASS CODEX</p><h2>${prettyClass(state.profile.className)}</h2><p class="muted">${descriptions[state.profile.className]}</p></div><div class="character-detail-block"><p class="eyebrow">CLASS TRIAL</p><h3>${classQuest?.title || "No class trial"}</h3><p class="muted">${classQuest?.description || "Choose a class to unlock a trial."}</p><div class="progress-meta"><span>${classQuest?.status === "completed" ? "Complete" : `${formatValue(classQuest?.progress || 0)} / ${formatValue(classQuest?.target || 0)} ${classQuest?.unit || ""}`}</span><strong>${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width:${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%"></span></div></div><div class="loadout-grid"><div><span>Title</span><strong>Wayfinder</strong></div><div><span>Shield reserve</span><strong>${state.player.shields}</strong></div><div><span>Longest streak</span><strong>${state.player.longestStreak} days</strong></div><div><span>Completed quests</span><strong>${state.player.completed}</strong></div></div></section></div></div>`;
+  return `<div class="character-page"><div class="character-page-heading"><div><p class="eyebrow">CHARACTER FORGE</p><h1>${prettyClass(state.profile.className)}</h1><p class="muted">This is your home base between quests. Your class avatar and loadout live here; your guide stays on Today.</p></div><span class="level-orb large">${levelProgress(state.player.xp).level}</span></div><div class="character-layout"><section class="character-stage-large"><div class="player-portrait sigil class-${state.profile.className} avatar-${state.player.avatarState}"><span class="glyph" aria-hidden="true">${iconForClass(state.profile.className)}</span><span class="portrait-name">${prettyClass(state.profile.className)}</span></div><div class="character-stage-label"><span>${state.player.avatarState}</span><small>current form</small></div></section><section class="character-details"><div class="character-detail-block"><p class="eyebrow">CURRENT RANK</p><h2>${rank.rank}-Rank</h2><p class="muted">${rank.nextRank ? `${formatValue(rank.current)} / ${formatValue(rank.needed)} XP to ${rank.nextRank}-Rank.` : "Maximum rank reached."}</p><div class="progress-track"><span style="width:${rank.percent}%"></span></div></div><div class="character-detail-block"><p class="eyebrow">TRAINING LEVEL</p><h2>${fitnessLevelInfo(state.profile.fitnessLevel).label} · ${fitnessLevelInfo(state.profile.fitnessLevel).rank}-Rank</h2><p class="muted">Chosen when this adventurer was created. It sets which workouts are recommended.</p></div><div class="character-detail-block"><p class="eyebrow">CLASS CODEX</p><h2>${prettyClass(state.profile.className)}</h2><p class="muted">${descriptions[state.profile.className]}</p></div><div class="character-detail-block"><p class="eyebrow">CLASS TRIAL</p><h3>${classQuest?.title || "No class trial"}</h3><p class="muted">${classQuest?.description || "Choose a class to unlock a trial."}</p><div class="progress-meta"><span>${classQuest?.status === "completed" ? "Complete" : `${formatValue(classQuest?.progress || 0)} / ${formatValue(classQuest?.target || 0)} ${classQuest?.unit || ""}`}</span><strong>${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width:${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%"></span></div></div><div class="loadout-grid"><div><span>Title</span><strong>Wayfinder</strong></div><div><span>Shield reserve</span><strong>${state.player.shields}</strong></div><div><span>Longest streak</span><strong>${state.player.longestStreak} days</strong></div><div><span>Completed quests</span><strong>${state.player.completed}</strong></div></div></section></div></div>`;
 }
 
 function prettyStatus(status) {
@@ -505,7 +505,7 @@ function renderDashboard() {
       </header>
       <div class="dashboard-grid view-${activeView} ${activeView === "stats" ? "stats-mode" : activeView === "character" ? "character-mode" : ""}">
         <aside class="sidebar">
-          <div class="profile-block"><div class="avatar avatar-${state.player.avatarState}">${iconForClass(state.profile.className)}</div><div><strong>${escapeHtml(state.profile.name)}</strong><span>Level ${progress.level} ${prettyClass(state.profile.className)}</span></div></div>
+          <div class="profile-block"><div class="avatar sigil class-${state.profile.className} avatar-${state.player.avatarState}"><span class="glyph" aria-hidden="true">${iconForClass(state.profile.className)}</span></div><div><strong>${escapeHtml(state.profile.name)}</strong><span>Level ${progress.level} ${prettyClass(state.profile.className)}</span></div></div>
           <nav><button class="nav-item ${activeView === "dashboard" ? "active" : ""}" data-view="dashboard" type="button"><span>⌂</span> Dashboard</button><button class="nav-item ${activeView === "workouts" ? "active" : ""}" data-view="workouts" type="button"><span>♜</span> Workouts</button><button class="nav-item ${activeView === "quests" ? "active" : ""}" data-view="quests" type="button"><span>✦</span> Quests <b>${completed}/3</b></button><button class="nav-item ${activeView === "stats" ? "active" : ""}" data-view="stats" type="button"><span>◎</span> Stats</button><button class="nav-item ${activeView === "character" ? "active" : ""}" data-view="character" type="button"><span>◈</span> Character</button></nav>
           <div class="sidebar-footer"><p class="eyebrow">Campaign note</p><p>Consistency beats intensity. Your character can rest and still return stronger.</p></div>
         </aside>
@@ -543,13 +543,12 @@ function mountCompanion() {
     .catch((error) => console.warn("3D assistant failed to load", error));
 }
 
-// Plays the class emblem's move (swing, arrow, spell, burst) from the start.
-function castSigil() {
-  const portrait = document.querySelector("#character-view .player-portrait");
-  if (!portrait) return;
-  portrait.classList.remove("is-casting");
-  void portrait.offsetWidth; // reflow so a second tap restarts the move
-  portrait.classList.add("is-casting");
+// Plays a class emblem's move (swing, arrow, spell, burst) from the start.
+function castSigil(sigil) {
+  if (!sigil) return;
+  sigil.classList.remove("is-casting");
+  void sigil.offsetWidth; // reflow so a second tap restarts the move
+  sigil.classList.add("is-casting");
 }
 
 function bindDashboardEvents() {
@@ -557,9 +556,10 @@ function bindDashboardEvents() {
     activeView = button.dataset.view;
     render();
     window.scrollTo(0, 0);
-    if (activeView === "character") castSigil();
+    if (activeView === "character") castSigil(document.querySelector("#character-view .sigil"));
   }));
-  document.querySelector("#character-view .player-portrait")?.addEventListener("click", castSigil);
+  document.querySelectorAll(".sigil").forEach((sigil) => sigil.addEventListener("click", () => castSigil(sigil)));
+  document.querySelector(".profile-block .sigil")?.addEventListener("pointerenter", (event) => event.pointerType === "mouse" && castSigil(event.currentTarget));
   document.querySelectorAll(".log-form").forEach((form) => form.addEventListener("submit", (event) => {
     event.preventDefault();
     const amount = new FormData(event.currentTarget).get("amount");

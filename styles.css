@@ -46,10 +46,10 @@ a { color: inherit; text-decoration: none; }
 .page-view.is-active { display: block; }
 .sidebar { display: flex; min-height: calc(100vh - 110px); flex-direction: column; border-right: 1px solid rgba(41, 56, 75, .7); padding: 24px 38px 0 0; }
 .profile-block { display: flex; align-items: center; gap: 12px; margin-bottom: 64px; }
-.profile-block strong, .profile-block span { display: block; }
+.profile-block strong, .profile-block span:not(.glyph) { display: block; }
 .profile-block strong { font-size: 14px; }
-.profile-block span { margin-top: 4px; color: var(--muted); font-size: 11px; }
-.avatar { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid var(--gold); border-radius: 14px; background: linear-gradient(135deg, #384863, #1a283b); color: var(--gold-strong); font-size: 21px; box-shadow: 0 7px 20px rgba(244, 199, 107, .14); }
+.profile-block span:not(.glyph) { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.avatar { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 14px; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%), linear-gradient(135deg, #2b3a56, #161f33); color: var(--accent); font-size: 21px; box-shadow: 0 7px 20px color-mix(in srgb, var(--accent) 18%, transparent); }
 .avatar-tired { filter: saturate(.55); border-color: #b9a477; }
 .avatar-injured { filter: saturate(.35); border-color: var(--red); color: var(--red); }
 .sidebar nav { display: grid; gap: 9px; }
@@ -185,33 +185,35 @@ h3 { margin-bottom: 8px; font-size: 17px; letter-spacing: -.02em; }
 .character-stage-large::after { position: absolute; right: 12%; bottom: 12%; left: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgba(106, 212, 209, .5), transparent); content: ""; }
 .character-stage-large .webgl-avatar { position: absolute; inset: 32px 20px 48px; }
 .character-stage-large .avatar-fallback { font-size: 120px; }
-.player-portrait { --accent: #f4c76b; position: absolute; top: 90px; left: 50%; display: grid; width: 220px; height: 270px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 48% 48% 24% 24%; background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 48%), linear-gradient(145deg, #243350, #131c31); color: var(--accent); font-size: 110px; transform: translateX(-50%); box-shadow: 0 24px 50px rgba(0, 0, 0, .25), 0 0 50px color-mix(in srgb, var(--accent) 22%, transparent); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.player-portrait.class-ranger { --accent: #6ad4d1; }
-.player-portrait.class-warrior .glyph { font-size: 1.45em; } /* ⚔ draws much smaller than the other glyphs */
-.player-portrait.class-mage { --accent: #c5a7ff; }
-.player-portrait.class-allrounder { --accent: #ff6f9e; }
-.player-portrait .glyph { position: relative; z-index: 1; line-height: 1; text-shadow: 0 0 .25em color-mix(in srgb, var(--accent) 60%, transparent); }
+/* class emblem shared by the Character page portrait and the sidebar avatar (castSigil in app.js plays the move) */
+.sigil { --accent: #f4c76b; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.player-portrait { position: absolute; top: 90px; left: 50%; display: grid; width: 220px; height: 270px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 48% 48% 24% 24%; background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 48%), linear-gradient(145deg, #243350, #131c31); color: var(--accent); font-size: 110px; transform: translateX(-50%); box-shadow: 0 24px 50px rgba(0, 0, 0, .25), 0 0 50px color-mix(in srgb, var(--accent) 22%, transparent); }
+.sigil.class-ranger { --accent: #6ad4d1; }
+.sigil.class-warrior .glyph { font-size: 1.45em; } /* ⚔ draws much smaller than the other glyphs */
+.sigil.class-mage { --accent: #c5a7ff; }
+.sigil.class-allrounder { --accent: #ff6f9e; }
+.sigil .glyph { position: relative; z-index: 1; line-height: 1; text-shadow: 0 0 .25em color-mix(in srgb, var(--accent) 60%, transparent); }
 /* rune ring behind the glyph; ::after is the class move's effect (slash, arrow trail, spell arc, rays) */
-.player-portrait::before { position: absolute; top: 50%; left: 50%; width: 1.55em; height: 1.55em; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 50%; box-shadow: 0 0 0 .12em color-mix(in srgb, var(--accent) 8%, transparent), inset 0 0 .3em color-mix(in srgb, var(--accent) 18%, transparent); content: ""; translate: -50% -50%; pointer-events: none; }
-.player-portrait::after { position: absolute; top: 50%; left: 50%; content: ""; opacity: 0; pointer-events: none; }
-.player-portrait.class-warrior::after { width: 1.9em; height: 3px; translate: -50% -50%; rotate: -45deg; background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent); }
-.player-portrait.class-ranger::after { width: 2em; height: 3px; transform-origin: 0 50%; translate: 0 -50%; rotate: -45deg; background: linear-gradient(90deg, transparent, var(--accent)); }
-.player-portrait.class-mage::after { width: 1.75em; height: 1.75em; border: 3px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; translate: -50% -50%; }
-.player-portrait.class-allrounder::after { width: 2.2em; height: 2.2em; border-radius: 50%; translate: -50% -50%; background: repeating-conic-gradient(var(--accent) 0 5deg, transparent 5deg 30deg); mask: radial-gradient(closest-side, transparent 62%, #000 64%, transparent 100%); }
+.sigil::before { position: absolute; top: 50%; left: 50%; width: 1.55em; height: 1.55em; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 50%; box-shadow: 0 0 0 .12em color-mix(in srgb, var(--accent) 8%, transparent), inset 0 0 .3em color-mix(in srgb, var(--accent) 18%, transparent); content: ""; translate: -50% -50%; pointer-events: none; }
+.sigil::after { position: absolute; top: 50%; left: 50%; content: ""; opacity: 0; pointer-events: none; }
+.sigil.class-warrior::after { width: 1.9em; height: 3px; translate: -50% -50%; rotate: -45deg; background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent); }
+.sigil.class-ranger::after { width: 2em; height: 3px; transform-origin: 0 50%; translate: 0 -50%; rotate: -45deg; background: linear-gradient(90deg, transparent, var(--accent)); }
+.sigil.class-mage::after { width: 1.75em; height: 1.75em; border: 3px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; translate: -50% -50%; }
+.sigil.class-allrounder::after { width: 2.2em; height: 2.2em; border-radius: 50%; translate: -50% -50%; background: repeating-conic-gradient(var(--accent) 0 5deg, transparent 5deg 30deg); mask: radial-gradient(closest-side, transparent 62%, #000 64%, transparent 100%); }
 @media (prefers-reduced-motion: no-preference) {
-  .player-portrait::before { animation: sigil-spin 26s linear infinite; }
-  .player-portrait .glyph { animation: sigil-breathe 3.6s ease-in-out infinite; }
-  .player-portrait:is(.avatar-tired, .avatar-injured)::before { animation-duration: 70s; }
-  .player-portrait:is(.avatar-tired, .avatar-injured) .glyph { animation-duration: 7s; }
+  .sigil::before { animation: sigil-spin 26s linear infinite; }
+  .sigil .glyph { animation: sigil-breathe 3.6s ease-in-out infinite; }
+  .sigil:is(.avatar-tired, .avatar-injured)::before { animation-duration: 70s; }
+  .sigil:is(.avatar-tired, .avatar-injured) .glyph { animation-duration: 7s; }
   /* the move plays once (castSigil in app.js), then the glyph goes back to breathing */
-  .player-portrait.class-warrior.is-casting .glyph { animation: sigil-swing .6s cubic-bezier(.3, 1.6, .5, 1), sigil-breathe 3.6s .6s ease-in-out infinite; }
-  .player-portrait.class-warrior.is-casting::after { animation: sigil-slash .45s .15s ease-out; }
-  .player-portrait.class-ranger.is-casting .glyph { animation: sigil-loose .9s ease-in-out, sigil-breathe 3.6s .9s ease-in-out infinite; }
-  .player-portrait.class-ranger.is-casting::after { animation: sigil-trail .55s .25s ease-out; }
-  .player-portrait.class-mage.is-casting .glyph { animation: sigil-twinkle .9s ease-in-out, sigil-breathe 3.6s .9s ease-in-out infinite; }
-  .player-portrait.class-mage.is-casting::after { animation: sigil-orbit .9s ease-out; }
-  .player-portrait.class-allrounder.is-casting .glyph { animation: sigil-turn .7s cubic-bezier(.3, 1.6, .5, 1), sigil-breathe 3.6s .7s ease-in-out infinite; }
-  .player-portrait.class-allrounder.is-casting::after { animation: sigil-rays .7s ease-out; }
+  .sigil.class-warrior.is-casting .glyph { animation: sigil-swing .6s cubic-bezier(.3, 1.6, .5, 1), sigil-breathe 3.6s .6s ease-in-out infinite; }
+  .sigil.class-warrior.is-casting::after { animation: sigil-slash .45s .15s ease-out; }
+  .sigil.class-ranger.is-casting .glyph { animation: sigil-loose .9s ease-in-out, sigil-breathe 3.6s .9s ease-in-out infinite; }
+  .sigil.class-ranger.is-casting::after { animation: sigil-trail .55s .25s ease-out; }
+  .sigil.class-mage.is-casting .glyph { animation: sigil-twinkle .9s ease-in-out, sigil-breathe 3.6s .9s ease-in-out infinite; }
+  .sigil.class-mage.is-casting::after { animation: sigil-orbit .9s ease-out; }
+  .sigil.class-allrounder.is-casting .glyph { animation: sigil-turn .7s cubic-bezier(.3, 1.6, .5, 1), sigil-breathe 3.6s .7s ease-in-out infinite; }
+  .sigil.class-allrounder.is-casting::after { animation: sigil-rays .7s ease-out; }
 }
 @keyframes sigil-spin { to { rotate: 360deg; } }
 @keyframes sigil-breathe { 50% { translate: 0 -.04em; text-shadow: 0 0 .45em var(--accent); } }
