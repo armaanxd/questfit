@@ -1,3 +1,6 @@
+import { currentTimeZone, todayKey } from "./time.js";
+export { currentTimeZone, todayKey } from "./time.js";
+
 export const QUEST_BLUEPRINTS = {
   warrior: [
     { key: "iron-gate", category: "strength", icon: "⚔", title: "Break the Iron Gate", description: "Complete a focused strength session and clear the first gate.", target: 30, unit: "min", logStep: 10, xp: 100, coins: 20, main: true },
@@ -53,29 +56,6 @@ export function fitnessLevelInfo(level) {
 
 export function makeStats() {
   return Object.fromEntries(STAT_KEYS.map((key) => [key, 0]));
-}
-
-export function currentTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
-export function todayKey(date = new Date(), timeZone = currentTimeZone()) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-    return `${values.year}-${values.month}-${values.day}`;
-  } catch {
-    return todayKey(date, "UTC");
-  }
 }
 
 export function workoutRotationDay(day) {

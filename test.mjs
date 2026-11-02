@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createState, fitnessLevelInfo, levelForXp, logProgress, missQuest, rankProgress, resetForNewDay, todayKey, useDayPass, workoutRotationDay } from "./game.js";
+import { acceptProof, progressOf, rewardFor } from "./verify.js";
 
 const midnightBoundary = new Date("2026-10-10T00:30:00.000Z");
 assert.equal(todayKey(midnightBoundary, "Asia/Kolkata"), "2026-10-10");
@@ -119,4 +120,53 @@ assert.equal(rankProgress(0, "mage", "soft").nextThreshold, 8000);
 assert.equal(rankProgress(7999, "allrounder", "hardcore").rank, "E");
 assert.equal(rankProgress(11000, "allrounder", "hardcore").rank, "D");
 assert.ok(rankProgress(0, "allrounder", "hardcore").nextThreshold > rankProgress(0, "warrior", "soft").nextThreshold);
+const at = (h, m = 0, s = 0) => new Date(2026, 9, 20, h, m, s).getTime(); // local time, so todayKey gives 2026-10-20
+const iso = (ms) => new Date(ms).toISOString();
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const vq = (over = {}) => ({ day: "2026-10-20", unit: "min", target: 30, xp: 100, coins: 20, main: false, verify: ["health-workout", "timer", "manual"], proofs: [], ...over });
+const vp = (over = {}) => ({ id: "t1", source: "timer", amount: 10, startedAt: iso(at(10)), endedAt: iso(at(10, 10)), meta: { pausedMs: 0 }, ...over });
+const NOON = at(12);
+
+// source and main-quest rules
+assert.equal(acceptProof(vq({ main: true, verify: ["health-workout", "timer"] }), vp({ source: "manual" }), [], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq({ unit: "steps", verify: ["health-steps", "manual"] }), vp(), [], NOON, TZ).ok, false);
+// dates
+assert.equal(acceptProof(vq(), vp({ startedAt: iso(at(13)), endedAt: iso(at(13, 10)) }), [], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq(), vp({ startedAt: iso(at(10) - 86400000), endedAt: iso(at(10, 10) - 86400000) }), [], NOON, TZ).ok, false);
+// timer limits
+assert.equal(acceptProof(vq(), vp({ amount: 11 }), [], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq(), vp({ amount: 9, meta: { pausedMs: 120000 } }), [], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq(), vp({ amount: 8, meta: { pausedMs: 120000 } }), [], NOON, TZ).ok, true);
+// no overlapping time-based proofs (Review Focus 1)
+const running = vp({ id: "t0" });
+assert.equal(acceptProof(vq(), vp({ id: "t2", startedAt: iso(at(10, 5)), endedAt: iso(at(10, 15)) }), [running], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq(), vp({ id: "hc-1", source: "health-workout", startedAt: iso(at(10, 5)), endedAt: iso(at(10, 15)), meta: { heartRateSamples: 30, knownType: true } }), [running], NOON, TZ).ok, false);
+assert.equal(acceptProof(vq(), vp({ id: "t3", startedAt: iso(at(10, 10)), endedAt: iso(at(10, 20)) }), [running], NOON, TZ).ok, true);
+// set spacing
+const setQ = vq({ unit: "sets", target: 3, verify: ["sets", "manual"] });
+const set1 = { id: "s1", source: "sets", amount: 1, startedAt: iso(at(10)), endedAt: iso(at(10)), meta: {} };
+setQ.proofs = [set1];
+assert.equal(acceptProof(setQ, { ...set1, id: "s2", startedAt: iso(at(10, 0, 20)), endedAt: iso(at(10, 0, 20)) }, [set1], NOON, TZ).ok, false);
+assert.equal(acceptProof(setQ, { ...set1, id: "s2", startedAt: iso(at(10, 0, 30)), endedAt: iso(at(10, 0, 30)) }, [set1], NOON, TZ).ok, true);
+// health record used once across the board, steps replace on the same quest
+const hc = vp({ id: "hc-9", source: "health-workout", meta: { heartRateSamples: 30, knownType: true } });
+assert.equal(acceptProof(vq(), { ...hc, startedAt: iso(at(11)), endedAt: iso(at(11, 10)) }, [hc], NOON, TZ).ok, false);
+const stepsQ = vq({ unit: "steps", target: 6000, verify: ["health-steps", "manual"] });
+const oldSteps = { id: "health-steps-2026-10-20", source: "health-steps", amount: 3000, startedAt: iso(at(0)), endedAt: iso(at(9)), meta: {} };
+stepsQ.proofs = [oldSteps];
+const stepResult = acceptProof(stepsQ, { ...oldSteps, amount: 4000, endedAt: iso(at(11)) }, [oldSteps], NOON, TZ);
+assert.equal(stepResult.ok, true);
+assert.equal(stepResult.replaces, true);
+// verified flag
+assert.equal(acceptProof(vq(), vp({ source: "manual" }), [], NOON, TZ).proof.verified, false);
+assert.equal(acceptProof(vq(), { ...hc, meta: { heartRateSamples: 0, knownType: true } }, [], NOON, TZ).proof.verified, false);
+assert.equal(acceptProof(vq(), hc, [], NOON, TZ).proof.verified, true);
+assert.equal(acceptProof(vq({ main: true, verify: ["health-workout", "timer"] }), { ...hc, meta: { heartRateSamples: 0, knownType: true } }, [], NOON, TZ).ok, false);
+// progress and reward split
+assert.equal(progressOf(vq({ proofs: [vp({ amount: 20 }), vp({ amount: 20 })] })), 30);
+assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }] })), { xp: 100, coins: 20 });
+assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: false }] })), { xp: 50, coins: 10 });
+assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 15, verified: true }, { amount: 15, verified: false }] })), { xp: 75, coins: 15 });
+assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }, { amount: 10, verified: false }] })), { xp: 100, coins: 20 });
+
 console.log("QuestFit game logic checks passed.");
