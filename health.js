@@ -31,7 +31,11 @@ export async function isConnected() {
 export async function readToday(dayStart, now) {
   const startDate = dayStart.toISOString();
   const endDate = now.toISOString();
-  const agg = await Health.queryAggregated({ dataType: "steps", startDate, endDate, bucket: "day", aggregation: "sum" }).catch(() => ({ samples: [] }));
+  // Ask up to midnight, not now: Samsung Health writes one all-day steps record, and
+  // Health Connect pro-rates a record that only partly overlaps the range (838 steps read as 608 at 5pm).
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const agg = await Health.queryAggregated({ dataType: "steps", startDate, endDate: dayEnd.toISOString(), bucket: "day", aggregation: "sum" }).catch(() => ({ samples: [] }));
   const total = agg.samples.reduce((sum, s) => sum + s.value, 0);
   const { workouts } = await Health.queryWorkouts({ startDate, endDate, ascending: true }).catch(() => ({ workouts: [] }));
   const mapped = await Promise.all(
