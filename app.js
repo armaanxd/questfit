@@ -283,7 +283,7 @@ function renderCompanion() {
   const reminderLabel = reminderActive
     ? `Reminder set for ${new Date(state.reminderUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : typeof Notification !== "undefined" && Notification.permission === "granted" ? "Remind me in 30 min" : "Enable quest reminders";
-  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">PERSONAL ASSISTANT</p><h2>Your guide is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>I'm here to help you return, one quest at a time.</p></div><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
+  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">YOUR COMPANION</p><h2>Your guide is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>I'm here to help you return, one quest at a time.</p></div><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
 }
 
 function render2DAvatar() {
