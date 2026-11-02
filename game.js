@@ -192,22 +192,45 @@ export function resetForNewDay(state, day) {
     state.notice = "Your class has shaped a new quest board.";
   }
   if (state.day === day) return state;
+  let missedDays = 0;
+  // Only roll forward; a clock or time zone moving back just rebuilds the board.
+  if (day > state.day) {
+    const yesterdayMain = state.quests.find((quest) => quest.main && quest.status === "active");
+    if (yesterdayMain) {
+      missQuest(state, yesterdayMain.id);
+      missedDays += 1;
+    }
+    for (let skipped = nextDay(state.day); skipped < day; skipped = nextDay(skipped)) {
+      resetShieldMonth(state, skipped);
+      applyMiss(state, "Main quest (day not opened)");
+      missedDays += 1;
+    }
+  }
   state.day = day;
   state.quests = makeQuests(day, state.profile.className);
   state.comboAwarded = false;
-  state.player.avatarState = "normal";
-  state.player.xpDebuffPct = 0;
-  state.notice = "A new chapter begins. Your quests are ready.";
+  state.notice = missedDays
+    ? `${missedDays} missed main quest${missedDays === 1 ? "" : "s"} counted. ${state.notice}`
+    : "A new chapter begins. Your quests are ready.";
   if (state.player.passMonth !== day.slice(0, 7)) {
     state.player.passMonth = day.slice(0, 7);
     state.player.restDaysUsed = 0;
     state.player.sickDaysUsed = 0;
   }
-  if (state.player.shieldMonth !== day.slice(0, 7)) {
-    state.player.shieldMonth = day.slice(0, 7);
-    state.player.shieldsUsedThisMonth = 0;
-  }
+  resetShieldMonth(state, day);
   return state;
+}
+
+function nextDay(day) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function resetShieldMonth(state, day) {
+  if (state.player.shieldMonth === day.slice(0, 7)) return;
+  state.player.shieldMonth = day.slice(0, 7);
+  state.player.shieldsUsedThisMonth = 0;
 }
 
 function addHistory(state, entry) {
@@ -254,6 +277,9 @@ export function completeQuest(state, questId) {
   quest.status = "completed";
   const reward = award(state, quest);
   if (quest.main) {
+    // A miss penalty lasts until the next main quest is done.
+    state.player.avatarState = "normal";
+    state.player.xpDebuffPct = 0;
     state.player.streak += 1;
     state.player.longestStreak = Math.max(state.player.longestStreak, state.player.streak);
   }
@@ -282,8 +308,12 @@ export function logProgress(state, questId, amount) {
 export function missQuest(state, questId) {
   const quest = state.quests.find((item) => item.id === questId);
   if (!quest || !quest.main || quest.status !== "active") return { changed: false };
-  const mode = modeDetails(state.profile.penaltyMode);
   quest.status = "missed";
+  return { ...applyMiss(state, quest.title), quest };
+}
+
+function applyMiss(state, title) {
+  const mode = modeDetails(state.profile.penaltyMode);
   state.player.missed += 1;
   if (mode.streak === "reset" && state.player.shields > 0 && state.player.shieldsUsedThisMonth < MAX_MONTHLY_SHIELD_USES) {
     state.player.shields -= 1;
@@ -292,17 +322,17 @@ export function missQuest(state, questId) {
     state.player.xpDebuffPct = 0;
     addHistory(state, { type: "shield", title: "Shield absorbed the loss" });
     state.notice = `Shield used. Your streak survives; ${MAX_MONTHLY_SHIELD_USES - state.player.shieldsUsedThisMonth} shield use${MAX_MONTHLY_SHIELD_USES - state.player.shieldsUsedThisMonth === 1 ? "" : "s"} left this month.`;
-    return { changed: true, quest, shieldUsed: true };
+    return { changed: true, shieldUsed: true };
   }
   state.player.avatarState = mode.avatar;
   state.player.xpDebuffPct = mode.xpDebuff;
   if (mode.streak === "reset") state.player.streak = 0;
   if (mode.coinLoss) state.player.coins = Math.max(0, Math.floor(state.player.coins * (1 - mode.coinLoss)));
-  addHistory(state, { type: "miss", title: quest.title, mode: state.profile.penaltyMode });
+  addHistory(state, { type: "miss", title, mode: state.profile.penaltyMode });
   state.notice = mode.streak === "pause"
     ? "The quest was missed. Your streak pauses, and your character is safe."
-    : `The quest was missed. ${mode.label} penalty applied for the next quest.`;
-  return { changed: true, quest };
+    : `The quest was missed. ${mode.label} penalty applied until your next main quest.`;
+  return { changed: true };
 }
 
 export function useDayPass(state, kind) {

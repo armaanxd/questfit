@@ -57,6 +57,62 @@ useDayPass(recoveryState, "rest");
 assert.equal(recoveryMain.status, "skipped_rest");
 assert.equal(recoveryState.player.streak, 0);
 
+const mainOf = (s) => s.quests.find((quest) => quest.main);
+const finishMain = (s) => logProgress(s, mainOf(s).id, mainOf(s).target);
+
+const streakState = createState({ penaltyMode: "balanced" });
+streakState.day = "2099-03-01";
+for (const day of ["2099-03-01", "2099-03-02", "2099-03-03"]) {
+  resetForNewDay(streakState, day);
+  finishMain(streakState);
+}
+assert.equal(streakState.player.streak, 3);
+resetForNewDay(streakState, "2099-03-04");
+resetForNewDay(streakState, "2099-03-05"); // 03-04 main left undone: the shield absorbs it
+assert.equal(streakState.player.streak, 3);
+assert.equal(streakState.player.shields, 0);
+resetForNewDay(streakState, "2099-03-06"); // 03-05 undone, no shield left
+assert.equal(streakState.player.streak, 0);
+assert.equal(streakState.player.longestStreak, 3);
+assert.equal(streakState.player.xpDebuffPct, 25);
+assert.equal(streakState.player.avatarState, "tired");
+finishMain(streakState); // the penalty carries into the next day's main quest, then clears
+assert.equal(streakState.player.streak, 1);
+assert.equal(streakState.player.xpDebuffPct, 0);
+assert.equal(streakState.player.avatarState, "normal");
+
+const awayState = createState({ penaltyMode: "balanced" });
+awayState.day = "2099-03-01";
+finishMain(awayState);
+awayState.player.streak = 5;
+const missedBefore = awayState.player.missed;
+resetForNewDay(awayState, "2099-03-04"); // 03-02 and 03-03 never opened: shield, then reset
+assert.equal(awayState.player.missed, missedBefore + 2);
+assert.equal(awayState.player.shields, 0);
+assert.equal(awayState.player.streak, 0);
+
+const softAway = createState({ penaltyMode: "soft" });
+softAway.day = "2099-03-01";
+finishMain(softAway);
+resetForNewDay(softAway, "2099-03-05");
+assert.equal(softAway.player.streak, 1);
+
+const restState = createState({ penaltyMode: "balanced" });
+restState.day = "2099-03-01";
+finishMain(restState);
+resetForNewDay(restState, "2099-03-02");
+useDayPass(restState, "rest");
+resetForNewDay(restState, "2099-03-03");
+assert.equal(restState.player.streak, 1);
+assert.equal(restState.player.shields, 1);
+
+const backwards = createState({ penaltyMode: "balanced" });
+backwards.day = "2099-03-02";
+backwards.player.streak = 4;
+resetForNewDay(backwards, "2099-03-01"); // clock moved back: no miss
+assert.equal(backwards.player.streak, 4);
+assert.equal(backwards.player.shields, 1);
+
 assert.equal(levelForXp(0), 1);
 assert.equal(levelForXp(250), 2);
 assert.equal(rankProgress(0, "mage", "soft").nextThreshold, 8000);
