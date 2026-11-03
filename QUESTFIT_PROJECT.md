@@ -128,18 +128,17 @@ The app shell now has separate views for:
 4. Stats
 5. Character
 
-The Character page is separate from the Today dashboard. The dashboard still provides a compact character and assistant summary for quick context.
+The Character page is separate from the Today dashboard. The dashboard still provides a compact character summary and JD for quick context.
 
-### Personal assistant avatar
+### JD, the companion
 
-- The 3D avatar is a personal assistant, not the user's player avatar.
-- It is a rigged glTF model (`public/models/assistant.glb`, CC0 RobotExpressive) rendered with Three.js, bundled from npm so it works offline in the mobile app.
+- JD is the app's companion, not the user's player avatar. He is a VRoid Studio sample model (`public/models/jd.vrm`, AvatarSample_C, VRM 1.0) rendered with Three.js and `@pixiv/three-vrm`, bundled from npm so it works offline in the mobile app.
+- Licence (embedded in the file): redistribution and personal-profit use allowed, credit required (shown in the companion panel), no modification of the mesh or textures. Confirm VRoid's current terms for sample models before release.
 - It is loaded lazily after the dashboard paints; the 2D CSS slime shows until the model is ready and stays if WebGL or the model fails.
-- It waves once per session, then plays an idle loop; a class-colored rim light and glowing ring keep each class distinct.
-- It reacts to the player: thumbs-up on a completed quest, a head shake on a missed main quest, and a wave when tapped.
-- It animates at 30 fps and pauses while off-screen or while the app is in the background, to save battery.
-- Tired plays a slower idle with a slight tilt; injured plays the sitting clip. Reduced-motion users see a still frame.
-- To swap the model, replace the .glb and edit the clip names at the top of `avatar3d.js`.
+- He is posed from code every frame (`jdpose.js`): breathing, weight shift, head drift, soft blinks and eye contact, with every bone easing toward its target. No animation clips ship with the model.
+- His attitude warms up with the player's level (`jdvoice.js`): Aloof (1-5, looks down on you), Grudging (6-10, side-eye), Warm (11-15, thumbs up), Proud (16+, fist pump). The tier sets his celebration move, his greeting and his lines, and the companion panel shows the level that changes it. A missed main quest plays a slump.
+- It animates at 30 fps and pauses while off-screen or while the app is in the background, to save battery. Tired and injured change his posture and expression. Reduced-motion users see a still frame.
+- `jdpose.js` also has walk, run and jump layers, which the website uses to let him parkour across the page; the app doesn't.
 
 The user character remains a separate character/loadout concept.
 
@@ -171,7 +170,9 @@ The current media is remote, so the browser needs internet access to load images
 | `app.js` | Rendering, onboarding, navigation, local persistence, workout cards, reminders, rollover timer |
 | `game.js` | Quest blueprints, state creation, quest progression, stats, XP, penalties, shields, rank helpers |
 | `styles.css` | Dark-fantasy visual system, responsive layout, pages, stat sheet, workout cards |
-| `avatar3d.js` | Loads and animates the glTF personal assistant (Three.js) |
+| `avatar3d.js` | Loads JD (VRM) and runs the render loop (Three.js, `@pixiv/three-vrm`) |
+| `jdpose.js` | JD's procedural motion: idle layers, moods, moves, walk/run/jump |
+| `jdvoice.js` | JD's attitude tiers by level, with his celebration moves and lines |
 | `notification-worker.js` | Prototype scheduled browser notification handler |
 | `test.mjs` | Assert-based game logic checks |
 | `README.md` | Short local run guide |
