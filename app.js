@@ -376,6 +376,7 @@ function renderOnboarding() {
     persist(SESSION_KEY, "active");
     saveState();
     render();
+    syncHealth(); // count today's steps so far if this phone already allowed Health Connect
   });
 }
 
@@ -640,27 +641,36 @@ function startTicker() {
   }, 1000);
 }
 
-async function syncHealth() {
-  if (!state?.health?.connected) return;
+// quiet: a background sync that only redraws when the steps or workouts actually changed.
+async function syncHealth({ quiet = false } = {}) {
+  if (!state) return;
+  const wasConnected = !!state.health?.connected;
+  if (!wasConnected && !isNative) return;
   const previousDay = state.day;
   state = resetForNewDay(state); // roll the day first so the read and the proof land on today's board
   if (state.day !== previousDay) saveState();
-  if (!(await health.isConnected())) {
-    if (!state) return;
+  const granted = await health.isConnected();
+  if (!state) return;
+  if (!granted) {
+    if (!wasConnected) return; // never connected: the Connect Health card stays up
     state.health.connected = false; // brings the Connect Health card back
     state.notice = "Health Connect access was removed. Timer and sets still work.";
     saveState();
     render();
     return;
   }
+  // Access lives on the phone, not in the save, so a new or reset campaign picks it straight back up.
+  if (!wasConnected) state.health = { connected: true, lastSyncAt: null };
   try {
     const now = new Date();
     const dayStart = new Date(`${state.day}T00:00:00`); // local midnight of the board's day
     const reading = await health.readToday(dayStart, now);
     if (!state) return; // campaign was reset mid-sync
-    if (applyHealthReading(state, reading, now.getTime()).changed) companionReaction = "cheer";
+    const { changed } = applyHealthReading(state, reading, now.getTime());
+    if (changed) companionReaction = "cheer";
+    if (quiet && !changed && wasConnected && state.day === previousDay) return saveState();
   } catch (error) {
-    if (!state) return;
+    if (!state || quiet) return;
     state.notice = `Health sync failed: ${error?.message || "unknown error"}`;
   }
   saveState();
@@ -714,6 +724,8 @@ if (!isNative && "serviceWorker" in navigator) navigator.serviceWorker.register(
 
 // Android hardware back: return to Today before leaving the app.
 App.addListener("resume", () => syncHealth());
+// While the app is on screen, pick up steps Samsung Health passes to Health Connect.
+setInterval(() => !document.hidden && syncHealth({ quiet: true }), 60000);
 App.addListener("backButton", () => {
   if (state && sessionActive && activeView !== "dashboard") {
     activeView = "dashboard";
