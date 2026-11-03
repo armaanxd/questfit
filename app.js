@@ -130,30 +130,30 @@ async function requestReminder() {
   if (isNative) {
     const { display } = await LocalNotifications.requestPermissions().catch(() => ({ display: "denied" }));
     if (display !== "granted") {
-      state.notice = "Notifications are off for QuestFit. Your companion will still remind you in-app.";
+      state.notice = "Notifications are off for QuestFit. JD will still remind you in-app.";
       return;
     }
     scheduleReminder();
-    state.notice = "Your companion will remind you to return in 30 minutes.";
+    state.notice = "JD will remind you to return in 30 minutes.";
     return;
   }
   if (!("Notification" in window)) {
-    state.notice = "Browser notifications are unavailable, so your companion will keep the reminder in-app.";
+    state.notice = "Browser notifications are unavailable, so JD will keep the reminder in-app.";
     return;
   }
   if (Notification.permission === "denied") {
-    state.notice = "Notifications are blocked in this browser. Your companion will still remind you in-app.";
+    state.notice = "Notifications are blocked in this browser. JD will still remind you in-app.";
     return;
   }
   if (Notification.permission !== "granted") {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      state.notice = "Notifications were not enabled. Your companion will still remind you in-app.";
+      state.notice = "Notifications were not enabled. JD will still remind you in-app.";
       return;
     }
   }
   scheduleReminder();
-  state.notice = "Your companion will remind you to return in 30 minutes.";
+  state.notice = "JD will remind you to return in 30 minutes.";
 }
 
 function escapeHtml(value) {
@@ -283,7 +283,7 @@ function renderCompanion() {
   const reminderLabel = reminderActive
     ? `Reminder set for ${new Date(state.reminderUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : typeof Notification !== "undefined" && Notification.permission === "granted" ? "Remind me in 30 min" : "Enable quest reminders";
-  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">YOUR COMPANION</p><h2>Your guide is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>I'm here to help you return, one quest at a time.</p></div><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
+  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">COMPANION</p><h2>JD is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>I'm here to help you return, one quest at a time.</p></div><p class="muted" style="margin-top:10px;font-size:9px">JD: AvatarSample_C by pixiv VRoid Project</p><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
 }
 
 function render2DAvatar() {
@@ -306,7 +306,7 @@ function renderCharacterPage() {
   };
   const classQuest = state.quests.find((quest) => quest.kind === "class");
   const rank = rankProgress(state.player.xp, state.profile.className, state.profile.penaltyMode);
-  return `<div class="character-page"><div class="character-page-heading"><div><p class="eyebrow">CHARACTER FORGE</p><h1>${prettyClass(state.profile.className)}</h1><p class="muted">This is your home base between quests. Your class avatar and loadout live here; your guide stays on Today.</p></div><span class="level-orb large">${levelProgress(state.player.xp).level}</span></div><div class="character-layout"><section class="character-stage-large"><div class="player-portrait sigil class-${state.profile.className} avatar-${state.player.avatarState}"><span class="glyph" aria-hidden="true">${iconForClass(state.profile.className)}</span><span class="portrait-name">${prettyClass(state.profile.className)}</span></div><div class="character-stage-label"><span>${state.player.avatarState}</span><small>current form</small></div></section><section class="character-details"><div class="character-detail-block"><p class="eyebrow">CURRENT RANK</p><h2>${rank.rank}-Rank</h2><p class="muted">${rank.nextRank ? `${formatValue(rank.current)} / ${formatValue(rank.needed)} XP to ${rank.nextRank}-Rank.` : "Maximum rank reached."}</p><div class="progress-track"><span style="width:${rank.percent}%"></span></div></div><div class="character-detail-block"><p class="eyebrow">TRAINING LEVEL</p><h2>${fitnessLevelInfo(state.profile.fitnessLevel).label} · ${fitnessLevelInfo(state.profile.fitnessLevel).rank}-Rank</h2><p class="muted">Chosen when this adventurer was created. It sets which workouts are recommended.</p></div><div class="character-detail-block"><p class="eyebrow">CLASS CODEX</p><h2>${prettyClass(state.profile.className)}</h2><p class="muted">${descriptions[state.profile.className]}</p></div><div class="character-detail-block"><p class="eyebrow">CLASS TRIAL</p><h3>${classQuest?.title || "No class trial"}</h3><p class="muted">${classQuest?.description || "Choose a class to unlock a trial."}</p><div class="progress-meta"><span>${classQuest?.status === "completed" ? "Complete" : `${formatValue(classQuest?.progress || 0)} / ${formatValue(classQuest?.target || 0)} ${classQuest?.unit || ""}`}</span><strong>${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width:${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%"></span></div></div><div class="loadout-grid"><div><span>Title</span><strong>Wayfinder</strong></div><div><span>Shield reserve</span><strong>${state.player.shields}</strong></div><div><span>Longest streak</span><strong>${state.player.longestStreak} days</strong></div><div><span>Completed quests</span><strong>${state.player.completed}</strong></div></div></section></div></div>`;
+  return `<div class="character-page"><div class="character-page-heading"><div><p class="eyebrow">CHARACTER FORGE</p><h1>${prettyClass(state.profile.className)}</h1><p class="muted">This is your home base between quests. Your class avatar and loadout live here; JD stays on Today.</p></div><span class="level-orb large">${levelProgress(state.player.xp).level}</span></div><div class="character-layout"><section class="character-stage-large"><div class="player-portrait sigil class-${state.profile.className} avatar-${state.player.avatarState}"><span class="glyph" aria-hidden="true">${iconForClass(state.profile.className)}</span><span class="portrait-name">${prettyClass(state.profile.className)}</span></div><div class="character-stage-label"><span>${state.player.avatarState}</span><small>current form</small></div></section><section class="character-details"><div class="character-detail-block"><p class="eyebrow">CURRENT RANK</p><h2>${rank.rank}-Rank</h2><p class="muted">${rank.nextRank ? `${formatValue(rank.current)} / ${formatValue(rank.needed)} XP to ${rank.nextRank}-Rank.` : "Maximum rank reached."}</p><div class="progress-track"><span style="width:${rank.percent}%"></span></div></div><div class="character-detail-block"><p class="eyebrow">TRAINING LEVEL</p><h2>${fitnessLevelInfo(state.profile.fitnessLevel).label} · ${fitnessLevelInfo(state.profile.fitnessLevel).rank}-Rank</h2><p class="muted">Chosen when this adventurer was created. It sets which workouts are recommended.</p></div><div class="character-detail-block"><p class="eyebrow">CLASS CODEX</p><h2>${prettyClass(state.profile.className)}</h2><p class="muted">${descriptions[state.profile.className]}</p></div><div class="character-detail-block"><p class="eyebrow">CLASS TRIAL</p><h3>${classQuest?.title || "No class trial"}</h3><p class="muted">${classQuest?.description || "Choose a class to unlock a trial."}</p><div class="progress-meta"><span>${classQuest?.status === "completed" ? "Complete" : `${formatValue(classQuest?.progress || 0)} / ${formatValue(classQuest?.target || 0)} ${classQuest?.unit || ""}`}</span><strong>${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%</strong></div><div class="progress-track"><span style="width:${classQuest ? Math.round((classQuest.progress / classQuest.target) * 100) : 0}%"></span></div></div><div class="loadout-grid"><div><span>Title</span><strong>Wayfinder</strong></div><div><span>Shield reserve</span><strong>${state.player.shields}</strong></div><div><span>Longest streak</span><strong>${state.player.longestStreak} days</strong></div><div><span>Completed quests</span><strong>${state.player.completed}</strong></div></div></section></div></div>`;
 }
 
 function prettyStatus(status) {
@@ -743,7 +743,7 @@ setInterval(() => {
   if (state.reminderNotified) return;
   state.reminderNotified = true;
   state.reminderUntil = null;
-  state.notice = "Your companion is calling you back to the quest.";
+  state.notice = "JD is calling you back to the quest.";
   saveState();
   render();
 }, 30_000);

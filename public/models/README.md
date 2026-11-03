@@ -1,6 +1,7 @@
 # Models
 
-`assistant.glb`: "RobotExpressive" by Tomás Laulhé (modified by Don McCurdy), CC0 1.0 (public domain).
-Source: https://github.com/mrdoob/three.js/tree/r180/examples/models/gltf/RobotExpressive
+`jd.vrm`: "AvatarSample_C" by pixiv VRoid Project (VRoid Studio sample model), VRM 1.0.
+Licence terms embedded in the file: https://vrm.dev/licenses/1.0/. Redistribution allowed, personal-profit commercial use allowed, **credit required**, **modification prohibited** (pose and animate only; never edit the mesh or textures).
+Before release: confirm against VRoid's current terms for sample models, and show the credit in the app.
 
-To use another model, replace `assistant.glb` with any rigged .glb and update the clip names in `CLIPS` / `GREETING_CLIP` at the top of `avatar3d.js`.
+JD is posed from code in `avatar3d.js` (no animation clips).
