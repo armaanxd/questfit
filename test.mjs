@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { addProof, applyHealthReading, createState, finishSession, fitnessLevelInfo, levelForXp, logProgress, logSet, makeQuests, missQuest, pauseSession, rankProgress, resetForNewDay, resumeSession, startSession, todayKey, useDayPass, workoutRotationDay } from "./game.js";
+import { jdLine, jdTier } from "./jdvoice.js";
 import { workoutCategory, acceptProof, progressOf, rewardFor } from "./verify.js";
 
 const midnightBoundary = new Date("2026-10-10T00:30:00.000Z");
@@ -311,5 +312,13 @@ const nrm = fresh("warrior");
 startSession(nrm, mainOf(nrm).id, at(10));
 finishSession(nrm, at(10, 40));
 assert.equal(mainOf(nrm).proofs[0].amount, 40);
+
+// JD warms up with level: aloof 1-5, grudging 6-10, warm 11-15, proud 16+.
+assert.deepEqual([1, 5, 6, 10, 11, 15, 16, 99].map((level) => jdTier(level).tier), [0, 0, 1, 1, 2, 2, 3, 3]);
+assert.equal(jdTier(5).next, 6);
+assert.equal(jdTier(99).next, null);
+assert.equal(jdTier(7).move, "sideeye");
+assert.ok(jdLine(12, "levelup").includes("12"));
+assert.notEqual(jdLine(1, "done"), jdLine(20, "done"));
 
 console.log("QuestFit game logic checks passed.");

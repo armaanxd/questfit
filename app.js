@@ -20,6 +20,7 @@ import {
   applyHealthReading,
 } from "./game.js?v=8";
 import * as health from "./health.js";
+import { jdLine, jdTier } from "./jdvoice.js";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -54,7 +55,9 @@ let activeView = "dashboard";
 let rolloverTimer = null;
 let tickTimer = null;
 let healthAvailable = null; // null until health.isAvailable() resolves
-let companionReaction = null; // played once by the assistant on the next dashboard render
+let companionReaction = null; // played once by JD on the next dashboard render
+const jdLevel = () => levelProgress(state.player.xp).level;
+const celebration = () => jdTier(jdLevel()).move; // JD's celebration depends on how far he has warmed up to you
 
 function loadState() {
   try {
@@ -273,17 +276,19 @@ function renderCompanion() {
   const mainQuest = state.quests.find((quest) => quest.main);
   const progress = mainQuest ? Math.round((mainQuest.progress / mainQuest.target) * 100) : 0;
   const reminderActive = state.reminderUntil && state.reminderUntil > Date.now();
+  const level = jdLevel();
+  const attitude = jdTier(level);
   const message = mainQuest?.status === "completed"
-    ? "The gate is open. Your main quest is complete."
+    ? jdLine(level, "done")
     : mainQuest?.status === "missed"
-      ? "The path is still here. Start again tomorrow."
+      ? jdLine(level, "missed")
       : progress > 0
-        ? `You are ${progress}% through today's main quest. Keep going.`
-        : "Your main quest is waiting. One small action starts the run.";
+        ? `${jdLine(level, progress >= 60 ? "nearly" : "partial")} (${progress}%)`
+        : jdLine(level, "waiting");
   const reminderLabel = reminderActive
     ? `Reminder set for ${new Date(state.reminderUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : typeof Notification !== "undefined" && Notification.permission === "granted" ? "Remind me in 30 min" : "Enable quest reminders";
-  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">COMPANION</p><h2>JD is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>I'm here to help you return, one quest at a time.</p></div><p class="muted" style="margin-top:10px;font-size:9px">JD: AvatarSample_C by pixiv VRoid Project</p><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
+  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">COMPANION</p><h2>JD is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>${attitude.label}.${attitude.next ? ` Reach level ${attitude.next} to change his mind.` : " He's on your side now."}</p></div><p class="muted" style="margin-top:10px;font-size:9px">JD: AvatarSample_C by pixiv VRoid Project</p><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
 }
 
 function render2DAvatar() {
@@ -540,7 +545,7 @@ function mountCompanion() {
   if (!target) return;
   // Loaded lazily so Three.js never delays the first paint; the 2D slime shows until the model is ready.
   import("./avatar3d.js")
-    .then(({ mountAvatar }) => mountAvatar(target, { className: state.profile.className, avatarState: state.player.avatarState, reaction }))
+    .then(({ mountAvatar }) => mountAvatar(target, { className: state.profile.className, avatarState: state.player.avatarState, reaction, level: jdLevel() }))
     .catch((error) => console.warn("3D assistant failed to load", error));
 }
 
@@ -564,7 +569,7 @@ function bindDashboardEvents() {
   document.querySelectorAll(".log-form").forEach((form) => form.addEventListener("submit", (event) => {
     event.preventDefault();
     const amount = new FormData(event.currentTarget).get("amount");
-    if (logProgress(state, event.currentTarget.dataset.questId, amount).reward) companionReaction = "cheer";
+    if (logProgress(state, event.currentTarget.dataset.questId, amount).reward) companionReaction = celebration();
     saveState();
     render();
   }));
@@ -575,8 +580,8 @@ function bindDashboardEvents() {
     if (action === "start-session") startSession(state, id);
     if (action === "pause-session") pauseSession(state);
     if (action === "resume-session") resumeSession(state);
-    if (action === "finish-session" && finishSession(state).reward) companionReaction = "cheer";
-    if (action === "set-done" && logSet(state, id).reward) companionReaction = "cheer";
+    if (action === "finish-session" && finishSession(state).reward) companionReaction = celebration();
+    if (action === "set-done" && logSet(state, id).reward) companionReaction = celebration();
     if (action === "sync-health") {
       syncHealth();
       return;
@@ -667,7 +672,7 @@ async function syncHealth({ quiet = false } = {}) {
     const reading = await health.readToday(dayStart, now);
     if (!state) return; // campaign was reset mid-sync
     const { changed } = applyHealthReading(state, reading, now.getTime());
-    if (changed) companionReaction = "cheer";
+    if (changed) companionReaction = celebration();
     if (quiet && !changed && wasConnected && state.day === previousDay) return saveState();
   } catch (error) {
     if (!state || quiet) return;
