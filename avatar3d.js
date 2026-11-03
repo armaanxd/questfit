@@ -1,19 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import { VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { createPoser } from "./jdpose.js";
 
 // JD is AvatarSample_C from VRoid Studio (credit required, no mesh edits: see public/models/README.md).
 const MODEL_URL = "./models/jd.vrm";
-// Arm angles (rad) around z: the VRM rest pose is a T-pose, so these swing the arms down or up.
-const ARM_DOWN = 1.2;
-const ARM_UP = 2.3;
-const MOODS = {
-  normal: { head: 0, lean: 0, tilt: 0, breath: 1.6, sad: 0 },
-  tired: { head: 0.22, lean: 0.1, tilt: 0, breath: 0.9, sad: 0.3 },
-  injured: { head: 0.28, lean: 0.14, tilt: -0.1, breath: 1.1, sad: 0.6 },
-};
-const REACTIONS = { greet: 1.8, cheer: 1.6, sad: 1.8 }; // seconds
-
 const THEMES = {
   warrior: { glow: 0x735cff },
   ranger: { glow: 0x62e6ff },
@@ -99,45 +90,14 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
   jd.scale.setScalar(1); // the VRM is shared between mounts, so undo the previous fit
   jd.position.set(0, 0, 0);
   fitToView(jd);
-  const mood = MOODS[avatarState] || MOODS.normal;
   const holder = new THREE.Group();
-  holder.rotation.z = mood.tilt;
   holder.add(jd);
   scene.add(holder);
 
-  const bone = (name) => vrm.humanoid.getNormalizedBoneNode(name);
-  const bones = Object.fromEntries(
-    ["hips", "spine", "chest", "head", "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"].map((name) => [name, bone(name)]),
-  );
-  const hipsY = bones.hips.position.y; // the hips carry the model's standing height
-  let move = null; // { name, t } while a reaction plays
-  const playOnce = (name) => {
-    if (REACTIONS[name]) move = { name, t: 0 };
-  };
-  // Posed from code every frame, so no animation clips ship with the model.
-  const pose = (time) => {
-    const e = move ? Math.sin(Math.PI * Math.min(move.t / REACTIONS[move.name], 1)) : 0;
-    const cheer = move?.name === "cheer" ? e : 0;
-    const greet = move?.name === "greet" ? e : 0;
-    const sad = move?.name === "sad" ? e : 0;
-    const wave = Math.sin(time * 12) * 0.35 * greet;
-    bones.spine.rotation.set(mood.lean + sad * 0.15, 0, 0);
-    bones.chest.rotation.x = Math.sin(time * mood.breath) * 0.015;
-    bones.head.rotation.set(mood.head + sad * 0.3 - cheer * 0.1, Math.sin(time * 0.5) * 0.06, 0);
-    bones.hips.position.y = hipsY + Math.abs(Math.sin(time * 9)) * 0.03 * cheer;
-    bones.leftUpperArm.rotation.z = -ARM_DOWN + (ARM_DOWN + ARM_UP) * cheer;
-    bones.rightUpperArm.rotation.z = ARM_DOWN - (ARM_DOWN + ARM_UP) * Math.max(cheer, greet);
-    bones.leftLowerArm.rotation.z = 0;
-    bones.rightLowerArm.rotation.z = -wave;
-    const blink = (time % 4) < 0.14 ? 1 : 0;
-    const x = vrm.expressionManager;
-    x.setValue("blink", blink);
-    x.setValue("happy", Math.max(cheer, greet) * 0.8);
-    x.setValue("sad", Math.max(mood.sad, sad));
-  };
-
-  if (REACTIONS[reaction]) playOnce(reaction);
-  else if (!greeted && avatarState === "normal") playOnce("greet");
+  const poser = createPoser(vrm, avatarState);
+  vrm.lookAt && (vrm.lookAt.target = camera); // eyes meet the viewer
+  const playOnce = (name) => poser.play(name);
+  if (!playOnce(reaction) && !greeted && avatarState === "normal") playOnce("greet");
   greeted = true;
 
   container.replaceChildren(renderer.domElement);
@@ -152,11 +112,9 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
     frame = requestAnimationFrame(animate);
     sinceRender += clock.getDelta();
     if (sinceRender < 1 / 30) return;
-    if (move && (move.t += sinceRender) > REACTIONS[move.name]) move = null;
-    pose(clock.elapsedTime);
+    poser.update(sinceRender);
     vrm.update(sinceRender);
     sinceRender = 0;
-    holder.rotation.y = Math.sin(clock.elapsedTime * 0.65) * 0.18;
     renderer.render(scene, camera);
   };
   const stop = () => {
@@ -207,7 +165,6 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
     renderer.dispose();
   }, 1000);
 
-  pose(0);
   vrm.update(0);
   renderer.render(scene, camera);
   updateRunning();
