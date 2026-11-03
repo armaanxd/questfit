@@ -24,14 +24,24 @@ export function acceptProof(quest, proof, existingProofs, now, timeZone) {
   return { ok: true, proof: { ...proof, verified }, ...(replaces && { replaces }) };
 }
 
+// Verified and unverified amounts that count toward the quest.
+function counted(quest) {
+  const sum = (verified) => quest.proofs.filter((p) => !!p.verified === verified).reduce((s, p) => s + p.amount, 0);
+  const v = sum(true);
+  // Synced steps are the whole day's count, so hand-logged steps only count above them, not on top.
+  const s = quest.unit === "steps" ? Math.max(0, sum(false) - v) : sum(false);
+  return { v, s };
+}
+
 export function progressOf(quest) {
-  return Math.min(quest.proofs.reduce((sum, p) => sum + p.amount, 0), quest.target);
+  const { v, s } = counted(quest);
+  return Math.min(v + s, quest.target);
 }
 
 export function rewardFor(quest) {
-  const sum = (verified) => quest.proofs.filter((p) => p.verified === verified).reduce((s, p) => s + p.amount, 0);
-  const v = Math.min(sum(true), quest.target);
-  const s = Math.min(sum(false), quest.target - v);
+  const counts = counted(quest);
+  const v = Math.min(counts.v, quest.target);
+  const s = Math.min(counts.s, quest.target - v);
   const part = (total) => Math.floor((total * (v + s / 2)) / quest.target);
   return { xp: part(quest.xp), coins: part(quest.coins) };
 }

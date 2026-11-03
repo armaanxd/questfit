@@ -174,6 +174,12 @@ assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }] })), { 
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: false }] })), { xp: 50, coins: 10 });
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 15, verified: true }, { amount: 15, verified: false }] })), { xp: 75, coins: 15 });
 assert.deepEqual(rewardFor(vq({ proofs: [{ amount: 30, verified: true }, { amount: 10, verified: false }] })), { xp: 100, coins: 20 });
+// Step quests: synced steps are the whole day's count, so hand-logged steps only count above them, not on top.
+const stepProofs = (synced, logged) => vq({ unit: "steps", target: 6000, proofs: [{ source: "health-steps", amount: synced, verified: true }, { source: "manual", amount: logged, verified: false }] });
+assert.equal(progressOf(stepProofs(4000, 1000)), 4000);
+assert.equal(progressOf(stepProofs(1000, 4000)), 4000);
+assert.deepEqual(rewardFor(stepProofs(4000, 1000)), rewardFor(vq({ unit: "steps", target: 6000, proofs: [{ amount: 4000, verified: true }] })));
+assert.deepEqual(rewardFor(stepProofs(3000, 4500)), rewardFor(vq({ target: 6000, proofs: [{ amount: 3000, verified: true }, { amount: 1500, verified: false }] })));
 
 // proof-based quests
 const fresh = (className) => { const s = createState({ className }); s.day = "2026-10-20"; s.quests = makeQuests("2026-10-20", className); return s; };
