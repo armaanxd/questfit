@@ -14,6 +14,9 @@ const THEMES = {
 };
 
 let modelPromise;
+// One renderer for every mount: each new WebGLRenderer is a new GPU context with its own copy of the
+// model's textures, and re-rendering on every tap piled them up until Android killed the app.
+let sharedRenderer;
 let greeted = false;
 
 // The dashboard re-renders via innerHTML, so the VRM is fetched and parsed only once and each mount gets its own scene.
@@ -52,7 +55,7 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
 
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer = sharedRenderer ??= new THREE.WebGLRenderer({ alpha: true, antialias: true });
   } catch (error) {
     console.warn("WebGL unavailable, keeping 2D fallback", error);
     return;
@@ -111,6 +114,7 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
   let sinceRender = 0;
   // Capped at 30 fps: 120 Hz phones otherwise burn most of a CPU core on an idle loop.
   const animate = () => {
+    if (!container.isConnected) return stop(); // a newer mount owns the shared canvas now
     frame = requestAnimationFrame(animate);
     sinceRender += clock.getDelta();
     if (sinceRender < 1 / 30) return;
@@ -151,7 +155,7 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
   });
   visibilityObserver.observe(container);
   document.addEventListener("visibilitychange", updateRunning);
-  if (!reduceMotion) renderer.domElement.addEventListener("pointerdown", () => playOnce(greeting));
+  renderer.domElement.onpointerdown = reduceMotion ? null : () => playOnce(greeting); // replaced, not stacked, per mount
 
   // A paused loop can't notice the dashboard re-rendering, so check for removal on a slow timer.
   const watcher = setInterval(() => {
@@ -164,7 +168,6 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
     holder.remove(jd); // the VRM outlives this mount, so don't dispose it
     ring.geometry.dispose();
     ring.material.dispose();
-    renderer.dispose();
   }, 1000);
 
   vrm.update(0);
