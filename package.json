@@ -19,6 +19,7 @@
     "@capacitor/preferences": "^8.0.1",
     "@capgo/capacitor-health": "^8.11.12",
     "@pixiv/three-vrm": "^3.5.5",
+    "motion": "^14.9.1",
     "three": "^0.180.0"
   },
   "devDependencies": {

@@ -21,6 +21,7 @@ import {
 } from "./game.js?v=8";
 import * as health from "./health.js";
 import { jdLine, jdTier } from "./jdvoice.js";
+import { snapshot, play } from "./fx.js";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -700,7 +701,9 @@ function render() {
   const previousDay = state.day;
   state = resetForNewDay(state);
   if (state.day !== previousDay) saveState();
+  const before = snapshot();
   renderDashboard();
+  play(before);
 }
 
 function scheduleDailyRollover() {
