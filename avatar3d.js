@@ -56,6 +56,10 @@ export async function mountAvatar(container, { className = "warrior", avatarStat
   let renderer;
   try {
     renderer = sharedRenderer ??= new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    // Without a cap, three lays each morph-target texture out as one 8096x1 row, and the phone's GPU pads
+    // that to a full tile: ~880 MB for JD's 57 expressions. 1024 makes them 1024x8 blocks, and three also
+    // scales his 2048px textures down to 1024, which is plenty for a few hundred pixels on screen.
+    renderer.capabilities.maxTextureSize = Math.min(renderer.capabilities.maxTextureSize, 1024);
   } catch (error) {
     console.warn("WebGL unavailable, keeping 2D fallback", error);
     return;
