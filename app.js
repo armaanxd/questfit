@@ -15,6 +15,7 @@ import {
   resumeSession,
   startSession,
   STAT_KEYS,
+  todayKey,
   useDayPass,
   workoutRotationDay,
   applyHealthReading,
@@ -54,6 +55,9 @@ let state = loadState();
 let sessionActive = Boolean(state) || localStorage.getItem(SESSION_KEY) === "active";
 let activeView = "dashboard";
 let rolloverTimer = null;
+// True while a stale day waits for one last Health Connect read, so yesterday's steps land on yesterday's board before it rolls over.
+let holdRollover = false;
+let heldCatchUp = null;
 let tickTimer = null;
 let healthAvailable = null; // null until health.isAvailable() resolves
 let companionReaction = null; // played once by JD on the next dashboard render
@@ -64,12 +68,38 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return null;
-    const next = resetForNewDay(saved);
+    // Naming the saved day migrates the save without rolling it; syncHealth rolls it after reading that day.
+    holdRollover = isNative && !!saved.health?.connected && saved.day < todayKey();
+    const next = holdRollover ? resetForNewDay(saved, saved.day) : resetForNewDay(saved);
     persist(STORAGE_KEY, JSON.stringify(next));
     return next;
   } catch {
     return null;
   }
+}
+
+const rollDay = () => (holdRollover ? state : resetForNewDay(state));
+
+// Reads the held day's final steps and workouts, then lets the day roll. Always releases the hold.
+function catchUpHeldDay() {
+  if (!holdRollover) return Promise.resolve();
+  return (heldCatchUp ??= (async () => {
+    try {
+      if (state && (await health.isConnected()) && state) {
+        const dayStart = new Date(`${state.day}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        const upTo = new Date(Math.min(Date.now(), dayEnd.getTime()));
+        const reading = await health.readToday(dayStart, upTo);
+        if (state) applyHealthReading(state, reading, upTo.getTime());
+      }
+    } catch {
+      // No reading: the day rolls over as it did before.
+    } finally {
+      holdRollover = false;
+      heldCatchUp = null;
+    }
+  })());
 }
 
 function saveState() {
@@ -650,10 +680,12 @@ function startTicker() {
 // quiet: a background sync that only redraws when the steps or workouts actually changed.
 async function syncHealth({ quiet = false } = {}) {
   if (!state) return;
+  await catchUpHeldDay();
+  if (!state) return;
   const wasConnected = !!state.health?.connected;
   if (!wasConnected && !isNative) return;
   const previousDay = state.day;
-  state = resetForNewDay(state); // roll the day first so the read and the proof land on today's board
+  state = rollDay(); // roll the day first so the read and the proof land on today's board
   if (state.day !== previousDay) saveState();
   const granted = await health.isConnected();
   if (!state) return;
@@ -699,7 +731,7 @@ function render() {
   clearInterval(tickTimer);
   if (!state || !sessionActive) return renderLogin();
   const previousDay = state.day;
-  state = resetForNewDay(state);
+  state = rollDay();
   if (state.day !== previousDay) saveState();
   const before = snapshot();
   renderDashboard();
@@ -711,11 +743,15 @@ function scheduleDailyRollover() {
   const now = new Date();
   const nextMidnight = new Date(now);
   nextMidnight.setHours(24, 0, 0, 0);
-  rolloverTimer = setTimeout(() => {
+  rolloverTimer = setTimeout(async () => {
     if (state) {
-      state = resetForNewDay(state);
-      saveState();
-      render();
+      holdRollover = !!state.health?.connected && isNative; // pick up the last minutes of steps before midnight closes the board
+      await catchUpHeldDay();
+      if (state) {
+        state = resetForNewDay(state);
+        saveState();
+        render();
+      }
     }
     scheduleDailyRollover();
   }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 250));
