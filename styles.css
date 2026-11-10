@@ -613,3 +613,4 @@ button:not(:disabled):active, .quick-action:active, .choice-card:active, .mode-o
 /* progress bars were hairlines that disappeared against the panel */
 .progress-track { height: 8px; background: color-mix(in srgb, var(--line) 80%, transparent); }
 .page-date, .board-count { white-space: nowrap; }
+.credits { margin: 22px 0 0; font-size: 11px; text-align: center; }
