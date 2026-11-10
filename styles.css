@@ -158,6 +158,8 @@ h3 { margin-bottom: 8px; font-size: 17px; letter-spacing: -.02em; }
 .companion-button:not(:disabled):hover { background: rgba(106, 212, 209, .16); }
 .webgl-avatar { position: relative; width: 100%; height: 100%; }
 .webgl-avatar canvas { display: block; width: 100%; height: 100%; }
+.webgl-avatar.is-loading .avatar-3d { visibility: hidden; }
+.mode-switch { margin-top: 14px; }
 .avatar-fallback { display: grid; width: 100%; height: 100%; place-items: center; color: var(--gold); font-size: 54px; }
 .webgl-unavailable .avatar-fallback { display: grid; }
 @keyframes companion-float { 0%, 100% { margin-bottom: 0; } 50% { margin-bottom: 6px; } }

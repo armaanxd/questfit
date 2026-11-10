@@ -319,7 +319,7 @@ function renderCompanion() {
   const reminderLabel = reminderActive
     ? `Reminder set for ${new Date(state.reminderUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : typeof Notification !== "undefined" && Notification.permission === "granted" ? "Remind me in 30 min" : "Enable quest reminders";
-  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">COMPANION</p><h2>JD is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>${attitude.label}.${attitude.next ? ` Reach level ${attitude.next} to change his mind.` : " He's on your side now."}</p></div><p class="muted" style="margin-top:10px;font-size:9px">JD: AvatarSample_C by pixiv VRoid Project</p><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
+  return `<section class="panel companion-panel"><div class="panel-heading"><div><p class="eyebrow">COMPANION</p><h2>JD is ready</h2></div><span class="companion-status"><span></span> awake</span></div><div class="companion-stage"><div class="companion-shadow"></div><div class="webgl-avatar is-loading" data-avatar-target="companion">${render2DAvatar()}</div></div><div class="companion-dialog"><strong>${message}</strong><p>${attitude.label}.${attitude.next ? ` Reach level ${attitude.next} to change his mind.` : " He's on your side now."}</p></div><p class="muted" style="margin-top:10px;font-size:9px">JD: AvatarSample_C by pixiv VRoid Project</p><button class="companion-button" data-action="remind" ${reminderActive ? "disabled" : ""}>${reminderLabel}</button></section>`;
 }
 
 function render2DAvatar() {
@@ -557,7 +557,7 @@ function renderDashboard() {
         <aside class="right-column" id="character">
           ${renderCompanion()}
           <section class="panel character-panel"><div class="panel-heading"><div><p class="eyebrow">YOUR CHARACTER</p><h2>${prettyClass(state.profile.className)}</h2></div><span class="level-orb">${progress.level}</span></div><div class="character-display avatar-${state.player.avatarState}">${iconForClass(state.profile.className)}<span class="state-label">${state.player.avatarState}</span></div><div class="level-row"><span>Level ${progress.level} · ${rank.rank}-Rank</span><strong>${rank.nextRank ? `${formatValue(rank.current)} / ${formatValue(rank.needed)} XP` : "Max rank"}</strong></div><div class="progress-track bright"><span style="width: ${rank.percent}%"></span></div><div class="character-meta"><span>Longest streak <strong>${state.player.longestStreak}d</strong></span><span>Completed <strong>${state.player.completed}</strong></span></div></section>
-          <section class="panel mode-panel"><div class="panel-heading"><div><p class="eyebrow">CONSEQUENCES</p><h2>${mode.label} mode</h2></div><span class="mode-dot ${state.profile.penaltyMode}"></span></div><p class="muted">${mode.label === "Soft" ? "Your streak pauses when you miss the main quest." : mode.label === "Balanced" ? "Your streak resets and XP is reduced for the next quest." : "Your streak resets, XP is reduced, and coins are at stake."}</p><label class="compact-label">Penalty mode<select id="mode-select"><option value="soft" ${state.profile.penaltyMode === "soft" ? "selected" : ""}>Soft</option><option value="balanced" ${state.profile.penaltyMode === "balanced" ? "selected" : ""}>Balanced</option><option value="hardcore" ${state.profile.penaltyMode === "hardcore" ? "selected" : ""}>Hardcore</option></select></label><button class="danger-button" data-action="miss-main" ${state.quests.some((quest) => quest.main && quest.status === "active") ? "" : "disabled"}>Mark main quest missed</button></section>
+          <section class="panel mode-panel"><div class="panel-heading"><div><p class="eyebrow">CONSEQUENCES</p><h2>${mode.label} mode</h2></div><span class="mode-dot ${state.profile.penaltyMode}"></span></div><p class="muted">${mode.label === "Soft" ? "Your streak pauses when you miss the main quest." : mode.label === "Balanced" ? "Your streak resets and XP is reduced for the next quest." : "Your streak resets, XP is reduced, and coins are at stake."}</p><div class="mode-row mode-switch">${[["soft", "Soft", "Streak pauses"], ["balanced", "Balanced", "Streak resets"], ["hardcore", "Hardcore", "Bigger stakes"]].map(([value, label, detail]) => `<label class="mode-option"><input type="radio" name="penaltyModeSwitch" value="${value}" ${state.profile.penaltyMode === value ? "checked" : ""} /><span><strong>${label}</strong><small>${detail}</small></span></label>`).join("")}</div><button class="danger-button" data-action="miss-main" ${state.quests.some((quest) => quest.main && quest.status === "active") ? "" : "disabled"}>Mark main quest missed</button></section>
           <section class="panel stats-panel" id="stats"><div class="panel-heading"><div><p class="eyebrow">QUEST ATTRIBUTES</p><h2>${prettyClass(state.profile.className)} playing style</h2></div><span class="book-icon">◎</span></div><p class="muted stats-caption">Every logged quest changes the shape of your build.</p>${renderRadarChart(state.player.stats)}</section>
           <section class="panel history-panel" id="chronicle"><div class="panel-heading"><div><p class="eyebrow">CHRONICLE</p><h2>Recent events</h2></div><span class="book-icon">⌁</span></div>${recentHistory.length ? `<div class="history-list">${recentHistory.map((event) => `<div class="history-item"><span class="history-icon ${event.type}">${event.type === "complete" ? "✓" : event.type === "miss" ? "!" : "✦"}</span><div><strong>${escapeHtml(event.title)}</strong><small>${event.type === "complete" ? `+${event.xp} XP · +${event.coins} coins` : event.type === "miss" ? `${prettyClass(event.mode || "balanced")} consequence` : event.type === "shield" ? "Monthly protection used" : "Streak protected"}</small></div></div>`).join("")}</div>` : `<p class="muted empty-history">Your story starts with the first completed quest.</p>`}</section>
         </aside>
@@ -574,10 +574,11 @@ function mountCompanion() {
   const reaction = companionReaction;
   companionReaction = null;
   if (!target) return;
-  // Loaded lazily so Three.js never delays the first paint; the 2D slime shows until the model is ready.
+  // Loaded lazily so Three.js never delays the first paint; the 2D slime stays hidden while it loads and only shows if JD can't.
   import("./avatar3d.js")
     .then(({ mountAvatar }) => mountAvatar(target, { className: state.profile.className, avatarState: state.player.avatarState, reaction, level: jdLevel() }))
-    .catch((error) => console.warn("3D assistant failed to load", error));
+    .catch((error) => console.warn("3D assistant failed to load", error))
+    .finally(() => target.classList.remove("is-loading")); // still showing the slime here means JD could not load
 }
 
 // Plays a class emblem's move (swing, arrow, spell, burst) from the start.
@@ -654,12 +655,12 @@ function bindDashboardEvents() {
     saveState();
     render();
   }));
-  document.querySelector("#mode-select")?.addEventListener("change", (event) => {
+  document.querySelectorAll('input[name="penaltyModeSwitch"]').forEach((input) => input.addEventListener("change", (event) => {
     state.profile.penaltyMode = event.target.value;
     state.notice = `${modeDetails(event.target.value).label} mode selected for your next consequence.`;
     saveState();
     render();
-  });
+  }));
 }
 
 function startTicker() {
