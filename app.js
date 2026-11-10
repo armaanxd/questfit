@@ -51,13 +51,13 @@ for (const key of [STORAGE_KEY, SESSION_KEY]) {
   if (value !== null) localStorage.setItem(key, value);
 }
 
+// Declared before loadState(), which sets it. True while a stale day waits for one last Health Connect read, so yesterday's steps land on yesterday's board before it rolls over.
+let holdRollover = false;
+let heldCatchUp = null;
 let state = loadState();
 let sessionActive = Boolean(state) || localStorage.getItem(SESSION_KEY) === "active";
 let activeView = "dashboard";
 let rolloverTimer = null;
-// True while a stale day waits for one last Health Connect read, so yesterday's steps land on yesterday's board before it rolls over.
-let holdRollover = false;
-let heldCatchUp = null;
 let tickTimer = null;
 let healthAvailable = null; // null until health.isAvailable() resolves
 let companionReaction = null; // played once by JD on the next dashboard render
