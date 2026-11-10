@@ -253,6 +253,16 @@ assert.equal(rb.quests.find((q) => q.main).status, "completed");
 assert.equal(rb.quests.find((q) => q.unit === "steps").status, "completed");
 assert.equal(rb.quests.find((q) => q.kind === "class").progress, 0);
 assert.equal(applyHealthReading(rb, reading, at(12, 5)).changed, false);
+
+// A day nobody opened: steps read up to midnight still land on that day's board before it rolls over.
+const lateDay = fresh("ranger");
+applyHealthReading(lateDay, reading, at(24));
+assert.equal(lateDay.quests.find((q) => q.main).status, "completed");
+resetForNewDay(lateDay, "2026-10-21");
+assert.ok(!lateDay.notice.includes("missed"));
+const unreadDay = fresh("ranger");
+resetForNewDay(unreadDay, "2026-10-21");
+assert.ok(unreadDay.notice.includes("1 missed"));
 assert.equal(rb.health.lastSyncAt, at(12, 5));
 
 const lb = fresh("mage");
