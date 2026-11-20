@@ -1,36 +1,15 @@
 # QuestFit
 
-Local-first prototype of the QuestFit core loop, packaged as a mobile app with Capacitor.
-The campaign is stored on the device (localStorage mirrored to Capacitor Preferences). There is no backend, account, health platform, or payment service.
+A fitness RPG for Android. Complete real workouts and hit your step goals to level up your character, and meet JD, a 3D companion who starts out aloof and warms up as you grow.
 
-## Run in the browser
+## Get the app
 
-```bash
-npm install
-npm run dev
-```
+Download the latest version from **https://questfit-evj.pages.dev** (Android only).
 
-## Run on an Android phone (USB debugging on, cable connected)
+## Privacy
 
-```bash
-npm run android   # builds, syncs, installs on the phone
-```
+Your campaign is saved on your phone. There's no account and no server. Read the [privacy policy](https://questfit-evj.pages.dev/privacy).
 
-Needs Java 21 (`brew install openjdk@21`); Android Studio's bundled Java 25 is too new for Gradle 8.14.
+## Credits
 
-## Run on a phone from the IDE
-
-Requires Xcode (iOS) or Android Studio (Android).
-
-```bash
-npm run build && npx cap sync
-npx cap open ios       # or: npx cap open android
-```
-
-Then press Run in Xcode / Android Studio with your phone connected.
-
-## Tests
-
-```bash
-npm test
-```
+JD uses "AvatarSample_C" by pixiv VRoid Project.
